@@ -1,5 +1,7 @@
 package hscript.lexer;
 
+import hscript.lexer.TokenKind.Keyword;
+
 using StringTools;
 
 class Lexer {
@@ -7,6 +9,7 @@ class Lexer {
 		final tokens:Array<Token> = [];
 		var pos:Int = 0;
 		var line:Int = 1;
+		var lineStart:Int = 0;
 		var length:Int = src.length;
 
 		inline function peek(offset:Int = 0):Int {
@@ -19,8 +22,8 @@ class Lexer {
 
 		inline function add(kind:TokenKind, start:Int, end:Int) {
 			tokens.push({
-				start: start,
-				end: end,
+				start: start - lineStart + 1,
+				end: end - lineStart + 1,
 				line: line,
 				kind: kind
 			});
@@ -37,6 +40,66 @@ class Lexer {
 			return (c >= '0'.code && c <= '9'.code) || (c >= 'a'.code && c <= 'f'.code) || (c >= 'A'.code && c <= 'F'.code);
 		}
 
+		inline function isKeyword(str:String):Bool {
+			return str == "var" || str == "final" || str == "static" || str == "function" || str == "class" || str == "interface" || str == "enum"
+				|| str == "abstract" || str == "typedef" || str == "extends" || str == "implements" || str == "new" || str == "if" || str == "else"
+				|| str == "while" || str == "do" || str == "for" || str == "switch" || str == "case" || str == "default" || str == "break"
+				|| str == "continue" || str == "return" || str == "throw" || str == "try" || str == "catch" || str == "public" || str == "private"
+				|| str == "protected" || str == "inline" || str == "override" || str == "dynamic" || str == "extern" || str == "true" || str == "false"
+				|| str == "null" || str == "import" || str == "using" || str == "package" || str == "untyped" || str == "cast" || str == "this"
+				|| str == "super" || str == "macro";
+		}
+
+		inline function getKeyword(str:String):Keyword {
+			return switch (str) {
+				case "var": Keyword.VAR;
+				case "final": Keyword.FINAL;
+				case "static": Keyword.STATIC;
+				case "function": Keyword.FUNCTION;
+				case "class": Keyword.CLASS;
+				case "interface": Keyword.INTERFACE;
+				case "enum": Keyword.ENUM;
+				case "abstract": Keyword.ABSTRACT;
+				case "typedef": Keyword.TYPEDEF;
+				case "extends": Keyword.EXTENDS;
+				case "implements": Keyword.IMPLEMENTS;
+				case "new": Keyword.NEW;
+				case "if": Keyword.IF;
+				case "else": Keyword.ELSE;
+				case "while": Keyword.WHILE;
+				case "do": Keyword.DO;
+				case "for": Keyword.FOR;
+				case "switch": Keyword.SWITCH;
+				case "case": Keyword.CASE;
+				case "default": Keyword.DEFAULT;
+				case "break": Keyword.BREAK;
+				case "continue": Keyword.CONTINUE;
+				case "return": Keyword.RETURN;
+				case "throw": Keyword.THROW;
+				case "try": Keyword.TRY;
+				case "catch": Keyword.CATCH;
+				case "public": Keyword.PUBLIC;
+				case "private": Keyword.PRIVATE;
+				case "protected": Keyword.PROTECTED;
+				case "inline": Keyword.INLINE;
+				case "override": Keyword.OVERRIDE;
+				case "dynamic": Keyword.DYNAMIC;
+				case "extern": Keyword.EXTERN;
+				case "true": Keyword.TRUE;
+				case "false": Keyword.FALSE;
+				case "null": Keyword.NULL;
+				case "import": Keyword.IMPORT;
+				case "using": Keyword.USING;
+				case "package": Keyword.PACKAGE;
+				case "untyped": Keyword.UNTYPED;
+				case "cast": Keyword.CAST;
+				case "this": Keyword.THIS;
+				case "super": Keyword.SUPER;
+				case "macro": Keyword.MACRO;
+				case _: null;
+			};
+		}
+
 		while (pos < length) {
 			var start:Int = pos;
 			var c:Int = advance();
@@ -46,6 +109,7 @@ class Lexer {
 					continue;
 				case '\n'.code:
 					line++;
+					lineStart = pos;
 					continue;
 
 				case '0'.code, '1'.code, '2'.code, '3'.code, '4'.code, '5'.code, '6'.code, '7'.code, '8'.code, '9'.code:
@@ -97,10 +161,12 @@ class Lexer {
 					while (isAlnum(peek()))
 						advance();
 					var str:String = src.substring(start, pos);
-					add(TIdent(str), start, pos);
+					add(isKeyword(str) ? TKeyword(getKeyword(str)) : TIdent(str), start, pos);
 
-				case '"'.code:
-					while (peek() != '"'.code && peek() != -1) {
+				case '"'.code, "'".code:
+					var isQuote:Bool = c == "'".code;
+
+					while (peek() != c && peek() != -1) {
 						if (peek() == '\n'.code)
 							line++;
 						advance();
@@ -108,7 +174,7 @@ class Lexer {
 					advance();
 
 					var str:String = src.substring(start + 1, pos - 1);
-					add(TString(str), start, pos);
+					add(TString(str, isQuote), start, pos);
 
 				case '+'.code:
 					switch (peek()) {
@@ -257,8 +323,8 @@ class Lexer {
 		}
 
 		tokens.push({
-			start: pos,
-			end: pos,
+			start: 0,
+			end: 0,
 			line: line,
 			kind: TEof
 		});

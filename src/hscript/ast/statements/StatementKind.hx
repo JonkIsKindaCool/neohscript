@@ -11,4 +11,6 @@ enum StatementKind {
     IFStmt(c:Expression, b:Statement, ?e:Statement);
     ReturnStmt(?r:Expression);
     ThrowStmt(b:StatementKind);
+
+    ExpressionStmt(e:Expression);
 }

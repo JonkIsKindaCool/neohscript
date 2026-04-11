@@ -1,5 +1,5 @@
 --library hscript
 --class-path src
---resource test.hx
+--resource Test.hx
 --main Main
 --interp

@@ -1,66 +1,113 @@
 package hscript.lexer;
 
 enum TokenKind {
-    TInt(i:Int);
-    TFloat(f:Float);
-    TString(s:String);
-    TIdent(id:String);
-    TKeyword(keyword:String);
+	TInt(i:Int);
+	TFloat(f:Float);
+	TString(s:String, ?singleQuote:Bool);
+	TIdent(id:String);
+	TKeyword(keyword:Keyword);
 
-    TPlus;        // +
-    TMinus;       // -
-    TStar;        // *
-    TSlash;       // /
-    TPercent;     // %
+	TPlus; // +
+	TMinus; // -
+	TStar; // *
+	TSlash; // /
+	TPercent; // %
 
-    TPlusPlus;    // ++
-    TMinusMinus;  // --
+	TPlusPlus; // ++
+	TMinusMinus; // --
 
-    TAssign;          // =
-    TPlusAssign;      // +=
-    TMinusAssign;     // -=
-    TStarAssign;      // *=
-    TSlashAssign;     // /=
-    TPercentAssign;   // %=
+	TAssign; // =
+	TPlusAssign; // +=
+	TMinusAssign; // -=
+	TStarAssign; // *=
+	TSlashAssign; // /=
+	TPercentAssign; // %=
 
-    TEqual;        // ==
-    TNotEqual;     // !=
+	TEqual; // ==
+	TNotEqual; // !=
 
-    TLess;         // <
-    TLessEqual;    // <=
-    TGreater;      // >
-    TGreaterEqual; // >=
+	TLess; // <
+	TLessEqual; // <=
+	TGreater; // >
+	TGreaterEqual; // >=
 
-    TAnd;          // &&
-    TOr;           // ||
-    TNot;          // !
+	TAnd; // &&
+	TOr; // ||
+	TNot; // !
 
-    TBitAnd;       // &
-    TBitOr;        // |
-    TBitXor;       // ^
-    TBitNot;       // ~
+	TBitAnd; // &
+	TBitOr; // |
+	TBitXor; // ^
+	TBitNot; // ~
 
-    TShiftLeft;    // <<
-    TShiftRight;   // >>
+	TShiftLeft; // <<
+	TShiftRight; // >>
 
-    TAndAssign;    // &=
-    TOrAssign;     // |=
-    TXorAssign;    // ^=
+	TAndAssign; // &=
+	TOrAssign; // |=
+	TXorAssign; // ^=
 
-    TQuestion;     // ?
-    TColon;        // :
-    TArrow;        // ->
+	TQuestion; // ?
+	TColon; // :
+	TArrow; // ->
 
-    TDot;          // .
-    TComma;        // ,
-    TSemicolon;    // ;
+	TDot; // .
+	TComma; // ,
+	TSemicolon; // ;
 
-    TLParen;       // (
-    TRParen;       // )
-    TLBrace;       // {
-    TRBrace;       // }
-    TLBracket;     // [
-    TRBracket;     // ]
+	TLParen; // (
+	TRParen; // )
+	TLBrace; // {
+	TRBrace; // }
+	TLBracket; // [
+	TRBracket; // ]
 
-    TEof;
+	TEof;
+}
+
+enum Keyword {
+	VAR;
+	FINAL;
+	STATIC;
+	FUNCTION;
+	CLASS;
+	INTERFACE;
+	ENUM;
+	ABSTRACT;
+	TYPEDEF;
+	EXTENDS;
+	IMPLEMENTS;
+	NEW;
+	IF;
+	ELSE;
+	WHILE;
+	DO;
+	FOR;
+	SWITCH;
+	CASE;
+	DEFAULT;
+	BREAK;
+	CONTINUE;
+	RETURN;
+	THROW;
+	TRY;
+	CATCH;
+	PUBLIC;
+	PRIVATE;
+	PROTECTED;
+	INLINE;
+	OVERRIDE;
+	DYNAMIC;
+	EXTERN;
+	TRUE;
+	FALSE;
+	NULL;
+	IMPORT;
+	USING;
+	PACKAGE;
+	UNTYPED;
+	CAST;
+	THIS;
+	SUPER;
+	MACRO;
 }
