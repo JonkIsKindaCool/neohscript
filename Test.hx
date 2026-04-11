@@ -1,7 +1,7 @@
 function main(): Int { 
-    return 10;
+    return sum(40, 1);
 }
 
-function aeaeaa(a:Int, ?b:Int = 0):Int {
+function sum(a:Int, ?b:Int = 0):Int {
     return a + b;
 }

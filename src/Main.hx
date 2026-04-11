@@ -10,5 +10,11 @@ import hscript.lexer.Token;
 class Main {
 	static function main() {
 		var tokens:Array<Token> = Lexer.tokenify(Resource.getString("Test.hx"));
+
+		var parser:Parser = new Parser(tokens, "Test.hx");
+		var decls = parser.parse();
+
+		for (decl in decls)
+			Sys.println(decl);
 	}
 }

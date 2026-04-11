@@ -1,10 +1,10 @@
 package hscript.ast.expressions;
 
-import haxe.ds.GenericStack;
 import hscript.ast.expressions.Expression;
-import hscript.ast.Extras;
 
 enum ExpressionKind {
+	EBlock(arr:Array<Expression>);
+
 	EInt(i:Int);
 	EFloat(f:Float);
 	EString(s:String);
@@ -27,7 +27,7 @@ enum ExpressionKind {
 
 	ENew(t:ASTType, params:Array<Expression>); 
 
-	EFunction(f:ASTFunction); 
+	EFunction(name: String, args:Array<FunctionArgument>, ret:ASTType, body:Expression); 
 
 	EReturn(?e:Expression);
 	EBreak;
@@ -197,26 +197,24 @@ enum Unop {
 }
 
 @:structInit
-class ASTFunction {
-    public var name:Null<String>;
-
-    public var arguments:GenericStack<FunctionArgument>;
-    public var retType:ASTType;
-
-    public var body:Expression;
-}
-
-@:structInit
 class FunctionArgument {
     public var name:String;
     public var type:ASTType;
     public var optional:Bool;
 
     public var def:Expression;
+
+	public function toString():String {
+		return '${optional ? '?' : ''}$name:$type${def != null ? ' = $def' : ''}';
+	}
 }
 
 @:structInit
 class ASTType {
     public var name:String;
     public var generics:Array<ASTType>;
+
+	public function toString():String {
+		return '$name${(generics.length >= 1) ? '<${[for (g in generics) g].join(",")}>' : ''}';
+	}
 }

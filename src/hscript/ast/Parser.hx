@@ -1,5 +1,7 @@
 package hscript.ast;
 
+import haxe.ds.GenericStack;
+import hscript.ast.declarations.Declaration;
 import hscript.ast.Span;
 import hscript.ast.expressions.ExpressionKind;
 import hscript.ast.expressions.Expression;
@@ -18,7 +20,106 @@ class Parser {
 		this.current = tokens[0];
 	}
 
-	
+	public function parse():Array<Declaration> {
+		var arr:Array<Declaration> = [];
+
+		while (!maybe(TEof)) {
+			arr.push(parseDecl());
+		}
+
+		return arr;
+	}
+
+	function parseDecl():Declaration {
+		var expr:Expression = parseStmt();
+		return {kind: DExpr(expr), span: makeComplexSpan(expr.span, expr.span)};
+	}
+
+	function parseStmt():Expression {
+		var acess:Array<Access> = [];
+		switch (current.kind) {
+			case TLBrace:
+				var start:Token = advance();
+				var body:Array<Expression> = [];
+				while (!maybe(TRBrace)) {
+					body.push(parseStmt());
+				}
+				return {
+					kind: EBlock(body),
+					span: makeSpan(start),
+					access: []
+				}
+			case TKeyword(RETURN):
+				var start = advance();
+				var expr:Expression = null;
+
+				if (!current.kind.equals(TSemicolon)) {
+					expr = parseExpr();
+				}
+				checkSemicolon();
+
+				return {
+					kind: EReturn(expr),
+					span: mergeSpans(makeSpan(start), expr.span),
+					access: []
+				}
+			case TKeyword(FUNCTION):
+				var start:Token = advance();
+				var name:String = null;
+				var args:Array<FunctionArgument> = new Array();
+				var ret:ASTType = null;
+				var expr:Expression = null;
+
+				if (current.kind.match(TIdent(_)))
+					name = getIdent();
+
+				expect(TLParen);
+				while (true) {
+					if (maybe(TRParen))
+						break;
+
+					var optional:Bool = maybe(TQuestion);
+
+					var name:String = getIdent();
+					var type:ASTType = null;
+					var def:Expression = null;
+
+					if (maybe(TColon))
+						type = parseType();
+
+					if (maybe(TAssign))
+						def = parseExpr();
+
+					args.push({
+						name: name,
+						type: type,
+						def: def,
+						optional: optional
+					});
+
+					if (!maybe(TComma)) {
+						expect(TRParen);
+						break;
+					}
+				}
+
+				if (maybe(TColon))
+					ret = parseType();
+
+				expr = parseStmt();
+
+				return {
+					kind: EFunction(name, args, ret, expr),
+					span: makeSpan(start),
+					access: acess
+				}
+			case _:
+		}
+
+		var expr:Expression = parseExpr();
+		checkSemicolon();
+		return expr;
+	}
 
 	function parseExpr():Expression {
 		return parseAssignment();
@@ -34,7 +135,8 @@ class Parser {
 			var right:Expression = parseAssignment();
 			return {
 				kind: EBinop(op, expr, right),
-				span: mergeSpans(expr.span, right.span)
+				span: mergeSpans(expr.span, right.span),
+				access: []
 			};
 		}
 
@@ -49,7 +151,8 @@ class Parser {
 			var right:Expression = parseAnd();
 			expr = {
 				kind: EBinop(OpBoolOr, expr, right),
-				span: mergeSpans(expr.span, right.span)
+				span: mergeSpans(expr.span, right.span),
+				access: []
 			};
 		}
 
@@ -64,7 +167,8 @@ class Parser {
 			var right:Expression = parseBitOr();
 			expr = {
 				kind: EBinop(OpBoolAnd, expr, right),
-				span: mergeSpans(expr.span, right.span)
+				span: mergeSpans(expr.span, right.span),
+				access: []
 			};
 		}
 
@@ -79,7 +183,8 @@ class Parser {
 			var right:Expression = parseBitXor();
 			expr = {
 				kind: EBinop(OpOr, expr, right),
-				span: mergeSpans(expr.span, right.span)
+				span: mergeSpans(expr.span, right.span),
+				access: []
 			};
 		}
 
@@ -94,7 +199,8 @@ class Parser {
 			var right:Expression = parseBitAnd();
 			expr = {
 				kind: EBinop(OpXor, expr, right),
-				span: mergeSpans(expr.span, right.span)
+				span: mergeSpans(expr.span, right.span),
+				access: []
 			};
 		}
 
@@ -109,7 +215,8 @@ class Parser {
 			var right:Expression = parseEquality();
 			expr = {
 				kind: EBinop(OpAnd, expr, right),
-				span: mergeSpans(expr.span, right.span)
+				span: mergeSpans(expr.span, right.span),
+				access: []
 			};
 		}
 
@@ -125,7 +232,8 @@ class Parser {
 			var right:Expression = parseComparison();
 			expr = {
 				kind: EBinop(op, expr, right),
-				span: mergeSpans(expr.span, right.span)
+				span: mergeSpans(expr.span, right.span),
+				access: []
 			};
 		}
 
@@ -147,7 +255,8 @@ class Parser {
 			var right:Expression = parseShift();
 			expr = {
 				kind: EBinop(op, expr, right),
-				span: mergeSpans(expr.span, right.span)
+				span: mergeSpans(expr.span, right.span),
+				access: []
 			};
 		}
 
@@ -163,7 +272,8 @@ class Parser {
 			var right:Expression = parseAdditive();
 			expr = {
 				kind: EBinop(op, expr, right),
-				span: mergeSpans(expr.span, right.span)
+				span: mergeSpans(expr.span, right.span),
+				access: []
 			};
 		}
 
@@ -179,7 +289,8 @@ class Parser {
 			var right:Expression = parseMultiplicative();
 			expr = {
 				kind: EBinop(op, expr, right),
-				span: mergeSpans(expr.span, right.span)
+				span: mergeSpans(expr.span, right.span),
+				access: []
 			};
 		}
 
@@ -200,7 +311,8 @@ class Parser {
 			var right:Expression = parseUnary();
 			expr = {
 				kind: EBinop(op, expr, right),
-				span: mergeSpans(expr.span, right.span)
+				span: mergeSpans(expr.span, right.span),
+				access: []
 			};
 		}
 
@@ -223,7 +335,8 @@ class Parser {
 			var expr:Expression = parseUnary();
 			return {
 				kind: EUnop(op, expr, false),
-				span: mergeSpans(makeSpan(start), expr.span)
+				span: mergeSpans(makeSpan(start), expr.span),
+				access: []
 			};
 		}
 
@@ -242,16 +355,28 @@ class Parser {
 					} while (maybe(TComma));
 				}
 				expect(TRParen);
-				expr = {kind: ECall(expr, args), span: mergeSpans(expr.span, makeSpan(current))};
+				expr = {
+					kind: ECall(expr, args),
+					span: mergeSpans(expr.span, makeSpan(current)),
+					access: []
+				};
 			} else if (match(TDot)) {
 				advance();
 				var f = getIdent();
-				expr = {kind: EField(expr, f), span: mergeSpans(expr.span, makeSpan(current))};
+				expr = {
+					kind: EField(expr, f),
+					span: mergeSpans(expr.span, makeSpan(current)),
+					access: []
+				};
 			} else if (match(TLBracket)) {
 				advance();
 				var idx = parseExpr();
 				expect(TRBracket);
-				expr = {kind: EArray(expr, idx), span: mergeSpans(expr.span, makeSpan(current))};
+				expr = {
+					kind: EArray(expr, idx),
+					span: mergeSpans(expr.span, makeSpan(current)),
+					access: []
+				};
 			} else
 				break;
 		}
@@ -264,26 +389,54 @@ class Parser {
 		return switch (current.kind) {
 			case TInt(i):
 				advance();
-				{kind: EInt(i), span: makeSpan(start)};
+				{
+					kind: EInt(i),
+					span: makeSpan(start),
+					access: []
+				};
 			case TFloat(f):
 				advance();
-				{kind: EFloat(f), span: makeSpan(start)};
+				{
+					kind: EFloat(f),
+					span: makeSpan(start),
+					access: []
+				};
 			case TString(s, _):
 				advance();
-				{kind: EString(s), span: makeSpan(start)};
+				{
+					kind: EString(s),
+					span: makeSpan(start),
+					access: []
+				};
 			case TIdent(id):
 				advance();
-				{kind: EIdent(id), span: makeSpan(start)};
+				{
+					kind: EIdent(id),
+					span: makeSpan(start),
+					access: []
+				};
 
 			case TKeyword(TRUE):
 				advance();
-				{kind: EBool(true), span: makeSpan(start)};
+				{
+					kind: EBool(true),
+					span: makeSpan(start),
+					access: []
+				};
 			case TKeyword(FALSE):
 				advance();
-				{kind: EBool(false), span: makeSpan(start)};
+				{
+					kind: EBool(false),
+					span: makeSpan(start),
+					access: []
+				};
 			case TKeyword(NULL):
 				advance();
-				{kind: ENull, span: makeSpan(start)};
+				{
+					kind: ENull,
+					span: makeSpan(start),
+					access: []
+				};
 
 			case TKeyword(NEW):
 				advance();
@@ -296,7 +449,11 @@ class Parser {
 					} while (maybe(TComma));
 				}
 				expect(TRParen);
-				{kind: ENew(t, params), span: makeSpan(start)};
+				{
+					kind: ENew(t, params),
+					span: makeSpan(start),
+					access: []
+				};
 
 			case TLBracket:
 				advance();
@@ -307,7 +464,11 @@ class Parser {
 					} while (maybe(TComma));
 				}
 				expect(TRBracket);
-				{kind: EArrayDecl(values), span: makeSpan(start)};
+				{
+					kind: EArrayDecl(values),
+					span: makeSpan(start),
+					access: []
+				};
 
 			case TLParen:
 				advance();
@@ -409,7 +570,7 @@ class Parser {
 	}
 
 	function maybe(t:TokenKind):Bool {
-		if (peek().kind.equals(t)) {
+		if (current.kind.equals(t)) {
 			advance();
 			return true;
 		}
