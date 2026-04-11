@@ -1,0 +1,5 @@
+--library hscript
+--class-path src
+--resource test.hx
+--main Main
+--interp
