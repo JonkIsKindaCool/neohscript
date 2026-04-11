@@ -47,7 +47,7 @@ class Lexer {
 				|| str == "continue" || str == "return" || str == "throw" || str == "try" || str == "catch" || str == "public" || str == "private"
 				|| str == "protected" || str == "inline" || str == "override" || str == "dynamic" || str == "extern" || str == "true" || str == "false"
 				|| str == "null" || str == "import" || str == "using" || str == "package" || str == "untyped" || str == "cast" || str == "this"
-				|| str == "super" || str == "macro";
+				|| str == "super" || str == "macro" || str == "in";
 		}
 
 		inline function getKeyword(str:String):Keyword {

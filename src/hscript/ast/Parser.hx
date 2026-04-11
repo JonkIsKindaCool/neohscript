@@ -1,102 +1,24 @@
 package hscript.ast;
 
-import hscript.Expr.FunctionDecl;
-import hscript.ast.Extras.ASTType;
-import hscript.ast.Extras.FunctionArgument;
-import haxe.ds.GenericStack;
-import hscript.ast.Extras.ASTFunction;
-import hscript.ast.statements.Statement;
-import hscript.ast.declarations.Declaration;
+import hscript.ast.Span;
+import hscript.ast.expressions.ExpressionKind;
+import hscript.ast.expressions.Expression;
 import hscript.lexer.Token;
 import hscript.lexer.TokenKind;
-import hscript.lexer.TokenKind.Keyword;
-import hscript.ast.expressions.Expression;
-import hscript.ast.expressions.ExpressionKind;
-import hscript.ast.expressions.ExpressionKind.Binop;
-import hscript.ast.expressions.ExpressionKind.Unop;
-import hscript.ast.Span;
 
 class Parser {
 	var tokens:Array<Token>;
-	var pos:Int;
+	var pos:Int = 0;
 	var current:Token;
 	var file:String;
 
 	public function new(tokens:Array<Token>, file:String = "main") {
 		this.tokens = tokens;
 		this.file = file;
-		this.pos = 0;
 		this.current = tokens[0];
 	}
 
-	public function parse():Array<Declaration> {
-		var decls:Array<Declaration> = [];
-
-		while (!maybe(TEof)) {
-			try {
-				decls.push(parseDeclaration());
-			} catch (e:String) {
-				Sys.println('$file:${current.line}: characters ${current.start}-${current.end}: $e');
-				Sys.exit(0);
-			}
-		}
-
-		return decls;
-	}
-
-	function parseDeclaration():Declaration {
-		switch (peek().kind) {
-			case TKeyword(FUNCTION):
-				var f:ASTFunction = parseFunction();
-				return {
-					kind: FunctionDecl(f),
-					span: f.body.span
-				};
-			case _:
-		}
-		throw "Unexpected token: " + Token.toLiteralString(current.kind);
-	}
-
-	function parseStatement():Statement {
-		var start:Token = peek();
-		switch (start.kind) {
-			case TLBrace:
-				advance();
-				var end:Token = start;
-				var body:Array<Statement> = [];
-				while (true) {
-					if (peek().kind.equals(TRBrace)) {
-						end = advance();
-						break;
-					}
-					body.push(parseStatement());
-				}
-
-				return {
-					kind: BlockStmt(body),
-					span: makeComplexSpan(makeSpan(start), makeSpan(end))
-				}
-			case TKeyword(RETURN):
-				advance();
-				var expr:Expression = null;
-				if (!peek().kind.equals(TSemicolon)) {
-					expr = parseExpr();
-				}
-				checkSemicolon();
-				return {
-					kind: ReturnStmt(expr),
-					span: makeComplexSpan(makeSpan(start), expr?.span ?? makeSpan(start))
-				}
-			case _:
-		}
-		var expr:Expression = parseExpr();
-		checkSemicolon();
-
-		return {
-			kind: ExpressionStmt(expr),
-			span: makeComplexSpan(expr.span, expr.span)
-		}
-	}
+	
 
 	function parseExpr():Expression {
 		return parseAssignment();
@@ -309,154 +231,92 @@ class Parser {
 	}
 
 	function parsePostfix():Expression {
-		var expr:Expression = parsePrimary();
-
+		var expr = parsePrimary();
 		while (true) {
 			if (match(TLParen)) {
 				advance();
-				var args:Array<Expression> = [];
-
+				var args = [];
 				if (!match(TRParen)) {
 					do {
 						args.push(parseExpr());
-						if (match(TComma)) {
-							advance();
-						}
-					} while (!match(TRParen) && !match(TEof));
+					} while (maybe(TComma));
 				}
-
-				var closeToken:Token = expect(TRParen);
-				expr = {
-					kind: ECall(expr, args),
-					span: mergeSpans(expr.span, makeSpan(closeToken))
-				};
+				expect(TRParen);
+				expr = {kind: ECall(expr, args), span: mergeSpans(expr.span, makeSpan(current))};
 			} else if (match(TDot)) {
 				advance();
-				var field:String = getIdent();
-				expr = {
-					kind: EField(expr, field),
-					span: mergeSpans(expr.span, makeSpan(current))
-				};
+				var f = getIdent();
+				expr = {kind: EField(expr, f), span: mergeSpans(expr.span, makeSpan(current))};
 			} else if (match(TLBracket)) {
 				advance();
-				var index:Expression = parseExpr();
-				var closeToken:Token = expect(TRBracket);
-				expr = {
-					kind: ECall(expr, [index]),
-					span: mergeSpans(expr.span, makeSpan(closeToken))
-				};
-			} else {
+				var idx = parseExpr();
+				expect(TRBracket);
+				expr = {kind: EArray(expr, idx), span: mergeSpans(expr.span, makeSpan(current))};
+			} else
 				break;
-			}
 		}
-
 		return expr;
 	}
 
 	function parsePrimary():Expression {
-		var start:Token = current;
+		var start = current;
 
 		return switch (current.kind) {
 			case TInt(i):
 				advance();
-				{
-					kind: EInt(i),
-					span: makeSpan(start)
-				};
-
+				{kind: EInt(i), span: makeSpan(start)};
 			case TFloat(f):
 				advance();
-				{
-					kind: EFloat(f),
-					span: makeSpan(start)
-				};
-
+				{kind: EFloat(f), span: makeSpan(start)};
 			case TString(s, _):
 				advance();
-				{
-					kind: EString(s),
-					span: makeSpan(start)
-				};
-
+				{kind: EString(s), span: makeSpan(start)};
 			case TIdent(id):
 				advance();
-				{
-					kind: EIdent(id),
-					span: makeSpan(start)
-				};
+				{kind: EIdent(id), span: makeSpan(start)};
 
 			case TKeyword(TRUE):
 				advance();
-				{
-					kind: EIdent("true"),
-					span: makeSpan(start)
-				};
-
+				{kind: EBool(true), span: makeSpan(start)};
 			case TKeyword(FALSE):
 				advance();
-				{
-					kind: EIdent("false"),
-					span: makeSpan(start)
-				};
-
+				{kind: EBool(false), span: makeSpan(start)};
 			case TKeyword(NULL):
 				advance();
-				{
-					kind: EIdent("null"),
-					span: makeSpan(start)
-				};
+				{kind: ENull, span: makeSpan(start)};
+
+			case TKeyword(NEW):
+				advance();
+				var t = parseType();
+				expect(TLParen);
+				var params = [];
+				if (!match(TRParen)) {
+					do {
+						params.push(parseExpr());
+					} while (maybe(TComma));
+				}
+				expect(TRParen);
+				{kind: ENew(t, params), span: makeSpan(start)};
+
+			case TLBracket:
+				advance();
+				var values = [];
+				if (!match(TRBracket)) {
+					do {
+						values.push(parseExpr());
+					} while (maybe(TComma));
+				}
+				expect(TRBracket);
+				{kind: EArrayDecl(values), span: makeSpan(start)};
 
 			case TLParen:
 				advance();
-				var expr = parseExpr();
+				var e = parseExpr();
 				expect(TRParen);
-				expr;
-
-			default:
+				e;
+			case _:
 				throw 'Unexpected token: ${Token.toLiteralString(current.kind)}';
 		};
-	}
-
-	function parseFunction():ASTFunction {
-		expect(TKeyword(FUNCTION));
-		var name:String = getIdent();
-
-		var args:GenericStack<FunctionArgument> = new GenericStack();
-		expect(TLParen);
-
-		while (!maybe(TRParen)) {
-			var optional:Bool = maybe(TQuestion);
-			var name:String = getIdent();
-			var type:ASTType = null;
-
-			if (maybe(TColon)) {
-				type = parseType();
-			}
-
-			args.add({
-				name: name,
-				type: type,
-				optional: optional
-			});
-
-			if (!maybe(TComma))
-				expect(TRParen);
-		}
-
-		var ret:ASTType = null;
-
-		if (maybe(TColon)) {
-			ret = parseType();
-		}
-
-		var body:Statement = parseStatement();
-
-		return {
-			name: name,
-			arguments: args,
-			retType: ret,
-			body: body
-		}
 	}
 
 	function parseType():ASTType {
@@ -464,11 +324,12 @@ class Parser {
 		var generic:Array<ASTType> = [];
 
 		if (maybe(TLess)) {
-			advance();
 			while (true) {
 				generic.push(parseType());
-				if (!maybe(TComma))
+				if (!maybe(TComma)) {
 					expect(TGreater);
+					break;
+				}
 			}
 		}
 
@@ -484,7 +345,7 @@ class Parser {
 				advance();
 				id;
 			default:
-				throw 'Expected identifier after .';
+				throw 'Expected identifier, got ' + Token.toLiteralString(current.kind);
 		};
 	}
 

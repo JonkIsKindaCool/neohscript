@@ -75,6 +75,7 @@ enum Keyword {
 	ENUM;
 	ABSTRACT;
 	TYPEDEF;
+	IN;
 	EXTENDS;
 	IMPLEMENTS;
 	NEW;

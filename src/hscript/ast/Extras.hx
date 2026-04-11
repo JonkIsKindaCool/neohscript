@@ -1,7 +1,6 @@
 package hscript.ast;
 
 import hscript.ast.expressions.Expression;
-import hscript.ast.statements.Statement;
 import haxe.ds.GenericStack;
 
 /**
@@ -17,7 +16,7 @@ class ASTFunction {
     public var arguments:GenericStack<FunctionArgument>;
     public var retType:ASTType;
 
-    public var body:Statement;
+    public var body:Expression;
 }
 
 @:structInit
@@ -34,6 +33,8 @@ class FunctionArgument {
     public var name:String;
     public var type:ASTType;
     public var optional:Bool;
+
+    public var def:Expression;
 }
 
 @:structInit

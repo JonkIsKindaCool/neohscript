@@ -6,4 +6,8 @@ import hscript.ast.Span.ComplexSpan;
 class Declaration {
     public var kind:DeclarationKind;
     public var span:ComplexSpan;
+    
+    public function toString():String {
+        return Std.string(kind);
+    }
 }

@@ -104,6 +104,7 @@ class Token {
 			case DEFAULT: "default";
 			case BREAK: "break";
 			case CONTINUE: "continue";
+            case IN: "in";
 			case RETURN: "return";
 			case THROW: "throw";
 			case TRY: "try";
