@@ -1,4 +1,4 @@
---library hscript
+--library hscript-rewrite
 --define debug
 --class-path src
 --resource Test.hx

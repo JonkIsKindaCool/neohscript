@@ -1,5 +1,6 @@
 package hscript.ast;
 
+import haxe.Exception;
 import haxe.ds.GenericStack;
 import hscript.ast.declarations.Declaration;
 import hscript.ast.Span;
@@ -14,469 +15,266 @@ class Parser {
 	var current:Token;
 	var file:String;
 
-	public function new(tokens:Array<Token>, file:String = "main") {
+	public static final OP_PRECEDENCE:Map<Binop, Int> = [
+		OpIn => 1,
+		OpNullCoal => 2,
+		OpAssign => 3,
+		OpArrow => 3,
+		OpBoolOr => 4,
+		OpBoolAnd => 5,
+		OpInterval => 6,
+		OpEq => 7,
+		OpNotEq => 7,
+		OpGt => 7,
+		OpLt => 7,
+		OpGte => 7,
+		OpLte => 7,
+		OpOr => 8,
+		OpAnd => 8,
+		OpXor => 8,
+		OpShl => 9,
+		OpShr => 9,
+		OpUShr => 9,
+		OpAdd => 10,
+		OpSub => 10,
+		OpMult => 11,
+		OpDiv => 11,
+		OpMod => 11,
+	];
+
+	public function new() {}
+
+	public function parse(tokens:Array<Token>, file:String = "<unnamed>"):Array<Declaration> {
 		this.tokens = tokens;
 		this.file = file;
 		this.current = tokens[0];
-	}
 
-	public function parse():Array<Declaration> {
 		var arr:Array<Declaration> = [];
 
 		while (!maybe(TEof)) {
-			arr.push(parseDecl());
+			try {
+				arr.push(parseDeclaration());
+			} catch (e:Exception) {
+				throw '$file:${current.line}: characters ${current.start}-${current.end}: ${e.details()}';
+			}
 		}
 
 		return arr;
 	}
 
-	function parseDecl():Declaration {
-		var expr:Expression = parseStmt();
-		return {kind: DExpr(expr), span: makeComplexSpan(expr.span, expr.span)};
-	}
+	function parseDeclaration():Declaration {
+		var realDeclaration:Bool = false;
+		var access:Array<Access> = [];
 
-	function parseStmt():Expression {
-		var acess:Array<Access> = [];
 		switch (current.kind) {
-			case TLBrace:
-				var start:Token = advance();
-				var body:Array<Expression> = [];
-				while (!maybe(TRBrace)) {
-					body.push(parseStmt());
+			case TKeyword(PUBLIC), TKeyword(PRIVATE), TKeyword(STATIC), TKeyword(INLINE):
+				realDeclaration = true;
+				while (true){
+					switch (current.kind){
+						case TKeyword(PUBLIC):
+							access.push(APublic);
+						case TKeyword(PRIVATE):
+							access.push(APrivate);
+						case TKeyword(INLINE):
+							access.push(AInline);
+						case TKeyword(STATIC):
+							access.push(AStatic);
+						case _:
+							break;
+					}
 				}
-				return {
-					kind: EBlock(body),
-					span: makeSpan(start),
-					access: []
-				}
-			case TKeyword(RETURN):
-				var start = advance();
-				var expr:Expression = null;
+			case TKeyword(VAR), TKeyword(FINAL), TKeyword(FUNCTION):
+				realDeclaration = true;
+			default:
+		}
 
-				if (!current.kind.equals(TSemicolon)) {
-					expr = parseExpr();
-				}
-				checkSemicolon();
-
-				return {
-					kind: EReturn(expr),
-					span: mergeSpans(makeSpan(start), expr.span),
-					access: []
-				}
-			case TKeyword(FUNCTION):
-				var start:Token = advance();
-				var name:String = null;
-				var args:Array<FunctionArgument> = new Array();
-				var ret:ASTType = null;
-				var expr:Expression = null;
-
-				if (current.kind.match(TIdent(_)))
-					name = getIdent();
-
-				expect(TLParen);
-				while (true) {
-					if (maybe(TRParen))
-						break;
-
-					var optional:Bool = maybe(TQuestion);
+		if (realDeclaration) {
+			switch (current.kind) {
+				case TKeyword(VAR), TKeyword(FINAL):
+					var start:Span = makeSpan(current);
+					var isConst:Bool = current.kind.equals(TKeyword(FINAL));
+					advance();
 
 					var name:String = getIdent();
 					var type:ASTType = null;
-					var def:Expression = null;
-
-					if (maybe(TColon))
+					var e:Expression = null;
+					if (maybe(TColon)) {
 						type = parseType();
-
-					if (maybe(TAssign))
-						def = parseExpr();
-
-					args.push({
-						name: name,
-						type: type,
-						def: def,
-						optional: optional
-					});
-
-					if (!maybe(TComma)) {
-						expect(TRParen);
-						break;
 					}
-				}
 
-				if (maybe(TColon))
-					ret = parseType();
+					if (isConst) {
+						try {
+							expect(TAssign);
+						} catch (e){
+							throw 'Static final variable $name must be initialized.';
+						}
+						e = parseBinop();
+					} else {
+						if (maybe(TAssign))
+							e = parseBinop();
+					}
 
-				expr = parseStmt();
+					checkSemicolon();
 
-				return {
-					kind: EFunction(name, args, ret, expr),
-					span: makeSpan(start),
-					access: acess
-				}
-			case _:
+					return {
+						kind: DVar(name, isConst, e, type),
+						access: [],
+						span: makeComplexSpan(start, e?.span ?? start)
+					}
+				case _:
+					throw 'Expected Declaration, found anything else.';
+			}
 		}
 
-		var expr:Expression = parseExpr();
+		var decl:Expression = parseBinop();
 		checkSemicolon();
-		return expr;
-	}
-
-	function parseExpr():Expression {
-		return parseAssignment();
-	}
-
-	function parseAssignment():Expression {
-		var expr:Expression = parseOr();
-
-		if (match(TAssign) || match(TPlusAssign) || match(TMinusAssign) || match(TStarAssign) || match(TSlashAssign) || match(TPercentAssign)
-			|| match(TAndAssign) || match(TOrAssign) || match(TXorAssign)) {
-			var op:Binop = getAssignOp();
-			advance();
-			var right:Expression = parseAssignment();
-			return {
-				kind: EBinop(op, expr, right),
-				span: mergeSpans(expr.span, right.span),
-				access: []
-			};
+		return {
+			kind: DExpr(decl),
+			span: makeComplexSpan(decl.span, decl.span),
+			access: []
 		}
-
-		return expr;
 	}
 
-	function parseOr():Expression {
-		var expr:Expression = parseAnd();
+	public function parseBinop(minPrecedence:Int = 0):Expression {
+		var left:Expression = parseExpression();
 
-		if (match(TOr)) {
-			advance();
-			var right:Expression = parseAnd();
-			expr = {
-				kind: EBinop(OpBoolOr, expr, right),
-				span: mergeSpans(expr.span, right.span),
-				access: []
-			};
-		}
-
-		return expr;
-	}
-
-	function parseAnd():Expression {
-		var expr:Expression = parseBitOr();
-
-		if (match(TAnd)) {
-			advance();
-			var right:Expression = parseBitOr();
-			expr = {
-				kind: EBinop(OpBoolAnd, expr, right),
-				span: mergeSpans(expr.span, right.span),
-				access: []
-			};
-		}
-
-		return expr;
-	}
-
-	function parseBitOr():Expression {
-		var expr:Expression = parseBitXor();
-
-		if (match(TBitOr)) {
-			advance();
-			var right:Expression = parseBitXor();
-			expr = {
-				kind: EBinop(OpOr, expr, right),
-				span: mergeSpans(expr.span, right.span),
-				access: []
-			};
-		}
-
-		return expr;
-	}
-
-	function parseBitXor():Expression {
-		var expr:Expression = parseBitAnd();
-
-		if (match(TBitXor)) {
-			advance();
-			var right:Expression = parseBitAnd();
-			expr = {
-				kind: EBinop(OpXor, expr, right),
-				span: mergeSpans(expr.span, right.span),
-				access: []
-			};
-		}
-
-		return expr;
-	}
-
-	function parseBitAnd():Expression {
-		var expr:Expression = parseEquality();
-
-		if (match(TBitAnd)) {
-			advance();
-			var right:Expression = parseEquality();
-			expr = {
-				kind: EBinop(OpAnd, expr, right),
-				span: mergeSpans(expr.span, right.span),
-				access: []
-			};
-		}
-
-		return expr;
-	}
-
-	function parseEquality():Expression {
-		var expr:Expression = parseComparison();
-
-		if (match(TEqual) || match(TNotEqual)) {
-			var op:Binop = match(TEqual) ? OpEq : OpNotEq;
-			advance();
-			var right:Expression = parseComparison();
-			expr = {
-				kind: EBinop(op, expr, right),
-				span: mergeSpans(expr.span, right.span),
-				access: []
-			};
-		}
-
-		return expr;
-	}
-
-	function parseComparison():Expression {
-		var expr:Expression = parseShift();
-
-		if (match(TLess) || match(TLessEqual) || match(TGreater) || match(TGreaterEqual)) {
-			var op:Binop = switch (current.kind) {
-				case TLess: OpLt;
-				case TLessEqual: OpLte;
-				case TGreater: OpGt;
-				case TGreaterEqual: OpGte;
-				default: OpLt;
-			};
-			advance();
-			var right:Expression = parseShift();
-			expr = {
-				kind: EBinop(op, expr, right),
-				span: mergeSpans(expr.span, right.span),
-				access: []
-			};
-		}
-
-		return expr;
-	}
-
-	function parseShift():Expression {
-		var expr:Expression = parseAdditive();
-
-		if (match(TShiftLeft) || match(TShiftRight)) {
-			var op:Binop = match(TShiftLeft) ? OpShl : OpShr;
-			advance();
-			var right:Expression = parseAdditive();
-			expr = {
-				kind: EBinop(op, expr, right),
-				span: mergeSpans(expr.span, right.span),
-				access: []
-			};
-		}
-
-		return expr;
-	}
-
-	function parseAdditive():Expression {
-		var expr:Expression = parseMultiplicative();
-
-		if (match(TPlus) || match(TMinus)) {
-			var op:Binop = match(TPlus) ? OpAdd : OpSub;
-			advance();
-			var right:Expression = parseMultiplicative();
-			expr = {
-				kind: EBinop(op, expr, right),
-				span: mergeSpans(expr.span, right.span),
-				access: []
-			};
-		}
-
-		return expr;
-	}
-
-	function parseMultiplicative():Expression {
-		var expr:Expression = parseUnary();
-
-		if (match(TStar) || match(TSlash) || match(TPercent)) {
-			var op:Binop = switch (current.kind) {
-				case TStar: OpMult;
-				case TSlash: OpDiv;
-				case TPercent: OpMod;
-				default: OpMult;
-			};
-			advance();
-			var right:Expression = parseUnary();
-			expr = {
-				kind: EBinop(op, expr, right),
-				span: mergeSpans(expr.span, right.span),
-				access: []
-			};
-		}
-
-		return expr;
-	}
-
-	function parseUnary():Expression {
-		var start:Token = current;
-
-		if (match(TNot) || match(TMinus) || match(TPlus) || match(TBitNot) || match(TPlusPlus) || match(TMinusMinus)) {
-			var op:Unop = switch (current.kind) {
-				case TNot: OpNot;
-				case TMinus: OpNeg;
-				case TBitNot: OpNegBits;
-				case TPlusPlus: OpIncrement;
-				case TMinusMinus: OpDecrement;
-				default: OpNot;
-			};
-			advance();
-			var expr:Expression = parseUnary();
-			return {
-				kind: EUnop(op, expr, false),
-				span: mergeSpans(makeSpan(start), expr.span),
-				access: []
-			};
-		}
-
-		return parsePostfix();
-	}
-
-	function parsePostfix():Expression {
-		var expr = parsePrimary();
 		while (true) {
-			if (match(TLParen)) {
-				advance();
-				var args = [];
-				if (!match(TRParen)) {
-					do {
-						args.push(parseExpr());
-					} while (maybe(TComma));
-				}
-				expect(TRParen);
-				expr = {
-					kind: ECall(expr, args),
-					span: mergeSpans(expr.span, makeSpan(current)),
-					access: []
-				};
-			} else if (match(TDot)) {
-				advance();
-				var f = getIdent();
-				expr = {
-					kind: EField(expr, f),
-					span: mergeSpans(expr.span, makeSpan(current)),
-					access: []
-				};
-			} else if (match(TLBracket)) {
-				advance();
-				var idx = parseExpr();
-				expect(TRBracket);
-				expr = {
-					kind: EArray(expr, idx),
-					span: mergeSpans(expr.span, makeSpan(current)),
-					access: []
-				};
-			} else
+			var op:Binop = peekBinop();
+			if (op == null)
 				break;
+
+			var prec:Int = getPrecedence(op);
+			if (prec < minPrecedence)
+				break;
+
+			advance();
+
+			var nextMinPrec:Int = (isRightAssociative(op)) ? prec : prec + 1;
+
+			var right:Expression = parseBinop(nextMinPrec);
+
+			left = makeBinop(left, op, right);
 		}
-		return expr;
+
+		return left;
 	}
 
-	function parsePrimary():Expression {
-		var start = current;
+	function parseStatement(id:String, tok:Token):Expression {
+		switch (id) {
+			case _:
+				return makeExpr(EIdent(id), tok);
+		}
+	}
 
-		return switch (current.kind) {
+	private function parseExpression():Expression {
+		var tok = advance();
+
+		return switch (tok.kind) {
 			case TInt(i):
-				advance();
-				{
-					kind: EInt(i),
-					span: makeSpan(start),
-					access: []
-				};
+				makeExpr(EInt(i), tok);
+
 			case TFloat(f):
-				advance();
-				{
-					kind: EFloat(f),
-					span: makeSpan(start),
-					access: []
-				};
-			case TString(s, _):
-				advance();
-				{
-					kind: EString(s),
-					span: makeSpan(start),
-					access: []
-				};
+				makeExpr(EFloat(f), tok);
+
+			case TString(s, singleQuote):
+				makeExpr(EString(s), tok);
+
 			case TIdent(id):
-				advance();
-				{
-					kind: EIdent(id),
-					span: makeSpan(start),
-					access: []
-				};
+				parseStatement(id, tok);
 
 			case TKeyword(TRUE):
-				advance();
-				{
-					kind: EBool(true),
-					span: makeSpan(start),
-					access: []
-				};
+				makeExpr(EBool(true), tok);
+
 			case TKeyword(FALSE):
-				advance();
-				{
-					kind: EBool(false),
-					span: makeSpan(start),
-					access: []
-				};
+				makeExpr(EBool(false), tok);
+
 			case TKeyword(NULL):
-				advance();
-				{
-					kind: ENull,
-					span: makeSpan(start),
-					access: []
-				};
-
-			case TKeyword(NEW):
-				advance();
-				var t = parseType();
-				expect(TLParen);
-				var params = [];
-				if (!match(TRParen)) {
-					do {
-						params.push(parseExpr());
-					} while (maybe(TComma));
-				}
-				expect(TRParen);
-				{
-					kind: ENew(t, params),
-					span: makeSpan(start),
-					access: []
-				};
-
-			case TLBracket:
-				advance();
-				var values = [];
-				if (!match(TRBracket)) {
-					do {
-						values.push(parseExpr());
-					} while (maybe(TComma));
-				}
-				expect(TRBracket);
-				{
-					kind: EArrayDecl(values),
-					span: makeSpan(start),
-					access: []
-				};
+				makeExpr(ENull, tok);
 
 			case TLParen:
-				advance();
-				var e = parseExpr();
+				var e = parseExpression();
 				expect(TRParen);
 				e;
+
 			case _:
-				throw 'Unexpected token: ${Token.toLiteralString(current.kind)}';
+				throw 'Unexpected token in expression: ${Token.toLiteralString(tok.kind)}';
+		};
+	}
+
+	function makeExpr(kind:ExpressionKind, tok:Token):Expression {
+		return {
+			kind: kind,
+			span: makeSpan(tok),
+		};
+	}
+
+	private function isRightAssociative(op:Binop):Bool {
+		return switch (op) {
+			case OpAssign, OpAssignOp(_), OpArrow, OpNullCoal:
+				true;
+			default:
+				false;
+		};
+	}
+
+	private function getPrecedence(op:Binop):Int {
+		return switch (op) {
+			case OpAssignOp(_): 9;
+			default:
+				OP_PRECEDENCE.get(op) ?? -1;
+		};
+	}
+
+	private function peekBinop():Null<Binop> {
+		return switch (current.kind) {
+			case TPlus: OpAdd;
+			case TMinus: OpSub;
+			case TStar: OpMult;
+			case TSlash: OpDiv;
+			case TPercent: OpMod;
+
+			case TEqual: OpEq;
+			case TNotEqual: OpNotEq;
+			case TLess: OpLt;
+			case TLessEqual: OpLte;
+			case TGreater: OpGt;
+			case TGreaterEqual: OpGte;
+
+			case TBitAnd: OpAnd;
+			case TBitOr: OpOr;
+			case TBitXor: OpXor;
+
+			case TAnd: OpBoolAnd;
+			case TOr: OpBoolOr;
+
+			case TShiftLeft: OpShl;
+			case TShiftRight: OpShr;
+
+			case TAssign: OpAssign;
+			case TPlusAssign: OpAssignOp(OpAdd);
+			case TMinusAssign: OpAssignOp(OpSub);
+			case TStarAssign: OpAssignOp(OpMult);
+			case TSlashAssign: OpAssignOp(OpDiv);
+			case TPercentAssign: OpAssignOp(OpMod);
+			case TAndAssign: OpAssignOp(OpAnd);
+			case TOrAssign: OpAssignOp(OpOr);
+			case TXorAssign: OpAssignOp(OpXor);
+
+			case TArrow: OpArrow;
+			case TQuestion:
+				if (peek(1).kind.equals(TQuestion)) OpNullCoal else null;
+
+			case TKeyword(IN): OpIn;
+
+			default: null;
+		};
+	}
+
+	private function makeBinop(left:Expression, op:Binop, right:Expression):Expression {
+		var span:Span = mergeSpans(left.span, right.span);
+		return {
+			kind: EBinop(op, left, right),
+			span: span,
 		};
 	}
 

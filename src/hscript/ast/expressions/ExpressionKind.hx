@@ -17,17 +17,17 @@ enum ExpressionKind {
 
 	ECall(p:Expression, args:Array<Expression>);
 	EField(p:Expression, f:String);
-	EArray(e:Expression, index:Expression); 
+	EArray(e:Expression, index:Expression);
 
 	EArrayDecl(values:Array<Expression>);
 	EObjectDecl(fields:Array<{field:String, expr:Expression}>);
 
-	EIf(cond:Expression, then:Expression, ?elseExpr:Expression); 
-	ESwitch(subject:Expression, cases:Array<{values:Array<Expression>, expr:Expression}>, ?defaultExpr:Expression); 
+	EIf(cond:Expression, then:Expression, ?elseExpr:Expression);
+	ESwitch(subject:Expression, cases:Array<{values:Array<Expression>, expr:Expression}>, ?defaultExpr:Expression);
 
-	ENew(t:ASTType, params:Array<Expression>); 
+	ENew(t:ASTType, params:Array<Expression>);
 
-	EFunction(name: String, args:Array<FunctionArgument>, ret:ASTType, body:Expression); 
+	EFunction(name:String, args:Array<FunctionArgument>, ret:ASTType, body:Expression);
 
 	EReturn(?e:Expression);
 	EBreak;
@@ -35,6 +35,14 @@ enum ExpressionKind {
 	EThrow(e:Expression);
 
 	ETry(e:Expression, catches:Array<{name:String, type:ASTType, expr:Expression}>);
+}
+
+enum Access {
+	APublic;
+	AInline;
+	APrivate;
+	AStatic;
+	AOverride;
 }
 
 enum Binop {
@@ -198,11 +206,11 @@ enum Unop {
 
 @:structInit
 class FunctionArgument {
-    public var name:String;
-    public var type:ASTType;
-    public var optional:Bool;
+	public var name:String;
+	public var type:ASTType;
+	public var optional:Bool;
 
-    public var def:Expression;
+	public var def:Expression;
 
 	public function toString():String {
 		return '${optional ? '?' : ''}$name:$type${def != null ? ' = $def' : ''}';
@@ -211,8 +219,8 @@ class FunctionArgument {
 
 @:structInit
 class ASTType {
-    public var name:String;
-    public var generics:Array<ASTType>;
+	public var name:String;
+	public var generics:Array<ASTType>;
 
 	public function toString():String {
 		return '$name${(generics.length >= 1) ? '<${[for (g in generics) g].join(",")}>' : ''}';
