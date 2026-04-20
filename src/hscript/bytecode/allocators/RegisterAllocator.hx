@@ -42,6 +42,9 @@ class RegisterAllocator {
 	}
 
 	public function free(reg:Int) {
+		if (reg == -1)
+			return;
+		
 		if (!used[reg])
 			throw 'Trying to free an already empty register.';
 

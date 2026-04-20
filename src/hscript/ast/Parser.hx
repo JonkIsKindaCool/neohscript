@@ -46,6 +46,7 @@ class Parser {
 
 	public function parse(tokens:Array<Token>, file:String = "<unnamed>"):Array<Declaration> {
 		this.tokens = tokens;
+		this.pos = 0;
 		this.file = file;
 		this.current = tokens[0];
 
@@ -69,15 +70,19 @@ class Parser {
 		switch (current.kind) {
 			case TKeyword(PUBLIC), TKeyword(PRIVATE), TKeyword(STATIC), TKeyword(INLINE):
 				realDeclaration = true;
-				while (true){
-					switch (current.kind){
+				while (true) {
+					switch (current.kind) {
 						case TKeyword(PUBLIC):
+							advance();
 							access.push(APublic);
 						case TKeyword(PRIVATE):
+							advance();
 							access.push(APrivate);
 						case TKeyword(INLINE):
+							advance();
 							access.push(AInline);
 						case TKeyword(STATIC):
+							advance();
 							access.push(AStatic);
 						case _:
 							break;
@@ -105,13 +110,13 @@ class Parser {
 					if (isConst) {
 						try {
 							expect(TAssign);
-						} catch (e){
+						} catch (e) {
 							throw 'Static final variable $name must be initialized.';
 						}
-						e = parseBinop();
+						e = parseExpression();
 					} else {
 						if (maybe(TAssign))
-							e = parseBinop();
+							e = parseExpression();
 					}
 
 					checkSemicolon();
@@ -126,7 +131,7 @@ class Parser {
 			}
 		}
 
-		var decl:Expression = parseBinop();
+		var decl:Expression = parseExpression();
 		checkSemicolon();
 		return {
 			kind: DExpr(decl),
@@ -135,8 +140,8 @@ class Parser {
 		}
 	}
 
-	public function parseBinop(minPrecedence:Int = 0):Expression {
-		var left:Expression = parseExpression();
+	public function parseExpression(minPrecedence:Int = 0):Expression {
+		var left:Expression = parsePrimitive();
 
 		while (true) {
 			var op:Binop = peekBinop();
@@ -151,7 +156,7 @@ class Parser {
 
 			var nextMinPrec:Int = (isRightAssociative(op)) ? prec : prec + 1;
 
-			var right:Expression = parseBinop(nextMinPrec);
+			var right:Expression = parseExpression(nextMinPrec);
 
 			left = makeBinop(left, op, right);
 		}
@@ -166,7 +171,7 @@ class Parser {
 		}
 	}
 
-	private function parseExpression():Expression {
+	private function parsePrimitive():Expression {
 		var tok = advance();
 
 		return switch (tok.kind) {
@@ -177,10 +182,10 @@ class Parser {
 				makeExpr(EFloat(f), tok);
 
 			case TString(s, singleQuote):
-				makeExpr(EString(s), tok);
+				parsePostFix(makeExpr(EString(s), tok));
 
 			case TIdent(id):
-				parseStatement(id, tok);
+				parsePostFix(parseStatement(id, tok));
 
 			case TKeyword(TRUE):
 				makeExpr(EBool(true), tok);
@@ -194,11 +199,38 @@ class Parser {
 			case TLParen:
 				var e = parseExpression();
 				expect(TRParen);
-				e;
+				parsePostFix(e);
 
 			case _:
 				throw 'Unexpected token in expression: ${Token.toLiteralString(tok.kind)}';
 		};
+	}
+
+	private function parsePostFix(e:Expression):Expression {
+		switch (current.kind) {
+			case TLParen:
+				advance();
+				var args:Array<Expression> = [];
+				while (true) {
+					if (current.kind.equals(TRParen)) {
+						advance();
+						break;
+					}
+					args.push(parseExpression());
+
+					if (!maybe(TComma)) {
+						expect(TRParen);
+						break;
+					}
+				}
+
+				return {
+					span: e.span,
+					kind: ECall(e, args)
+				}
+			default:
+				return e;
+		}
 	}
 
 	function makeExpr(kind:ExpressionKind, tok:Token):Expression {

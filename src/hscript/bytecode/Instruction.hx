@@ -1,10 +1,16 @@
 package hscript.bytecode;
 
-enum abstract Instruction(Int) from Int to Int {
+enum abstract Instruction(Int) from Int to Int {	
+	var TRUE;
+	var FALSE;
+	var NULL;
+
     var LOAD_CONSTANT;
 	var LOAD_LOCAL;
 
 	var TOP_LEVEL_VAR_DECLARATION;
+
+	var CALL;
 
     //Binary operators 
 	// OP lReg rReg targetReg

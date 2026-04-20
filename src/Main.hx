@@ -12,50 +12,59 @@ import hscript.lexer.Token;
 
 @:access(hscript.Parser)
 class Main {
-	static function main() {
-		try {
-			var res:String = Resource.getString("Test.hx");
-			var t1:Float = Sys.time();
-			var tokens:Array<Token> = Lexer.tokenify(res);
+    static function main() {
+        try {
+            var code:String = Resource.getString("Test.hx");
 
-			var parser:Parser = new Parser();
-			var decls = parser.parse(tokens, "Test.hx");
+            var parser = new Parser();
+            var compiler = new Compiler();
+            var vm = new VM();
+            var interp = new Interp();
+            interp.fileName = "Test.hx";
 
-			var t2:Float = Sys.time();
+            var t1:Float = Sys.time();
+            for (i in 0...1000) {
+                var tokens:Array<Token> = Lexer.tokenify(code);
+                var decls = parser.parse(tokens, "Test.hx");
+            }
+            var t2:Float = Sys.time();
+            Sys.println("NeoHSCRIPT Parsing Time (1000 runs): " + ((t2 - t1)) + " seconds");
 
-			Sys.println("NeoHSCRIPT Parsing Time: " + (t2 - t1) * 1000 + "ms");
-			t1 = Sys.time();
-			var parser:hscript.Parser = new hscript.Parser();
-			var ast = parser.parseString(res);
-			t2 = Sys.time();
+            t1 = Sys.time();
+            for (i in 0...1000) {
+                var standardParser:hscript.Parser = new hscript.Parser();
+                var ast = standardParser.parseString(code);
+            }
+            t2 = Sys.time();
+            Sys.println("HSCRIPT-REWRITE Parsing Time (1000 runs): " + ((t2 - t1)) + " seconds");
 
-			Sys.println("HSCRIPT-REWRITE Parsing Time: " + (t2 - t1) * 1000 + "ms");
+            var tokens:Array<Token> = Lexer.tokenify(code);
+            var decls = parser.parse(tokens, "Test.hx");
+            var instructions = compiler.compile(decls, "Test.hx");
 
-			var instructions = new Compiler().compile(decls);
-			trace(instructions.instructions);
+            t1 = Sys.time();
+            for (i in 0...1000) {
+                var result = vm.execute(instructions);
+            }
+            t2 = Sys.time();
+            Sys.println("NeoHSCRIPT Execution Time (1000 runs): " + ((t2 - t1)) + " seconds");
 
-			var vm:VM = new VM();
-			t1 = Sys.time();
-			var result = vm.execute(instructions);
-			t2 = Sys.time();
+            var standardParser:hscript.Parser = new hscript.Parser();
+            var ast = standardParser.parseString(code);
 
-			Sys.println("NeoHSCRIPT Execution Time: " + (t2 - t1) * 1000 + "ms");
-			Sys.println("NeoHSCRIPT Result: " + result);
+            t1 = Sys.time();
+            for (i in 0...1000) {
+                var result = interp.execute(ast);
+            }
+            t2 = Sys.time();
+            Sys.println("HSCRIPT-REWRITE Execution Time (1000 runs): " + ((t2 - t1)) + " seconds");
 
-			var interp:Interp = new Interp();
-			t1 = Sys.time();
-			result = interp.execute(ast);
-			t2 = Sys.time();
+            // Save packed bytecode
+            var bytes:Bytes = Packer.pack(instructions);
+            File.saveBytes("test.nh", bytes);
 
-			Sys.println("HSCRIPT-REWRITE Execution Time: " + (t2 - t1) * 1000 + "ms");
-			Sys.println("HSCRIPT-REWRITE Result: " + result);
-
-			var bytes:Bytes = Packer.pack(instructions);
-			File.saveBytes('test.nh', bytes);
-
-			trace(Unpacker.unpack(bytes).instructions);
-		} catch (e){
-			Sys.println(e);
-		}
-	}
+        } catch (e:Dynamic) {
+            Sys.println(e);
+        }
+    }
 }

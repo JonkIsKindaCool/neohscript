@@ -19,11 +19,12 @@ class Compiler {
 	public function new() {}
 
 	public function compile(ast:Array<Declaration>, ?name:String = "<unnamed>"):Program {
+		this.name = name;
 		constantPool = [];
 		instructions = [];
 
 		registerAllocator = new RegisterAllocator();
-		variableAllocator = new VariableAllocator();
+		variableAllocator = new VariableAllocator(this);
 
 		for (decl in ast) {
 			compileDecl(decl);
@@ -37,13 +38,42 @@ class Compiler {
 			case DExpr(e):
 				compileExpr(e);
 			case DVar(n, f, e, t):
-				trace(n, f, e, t?.name);
+				if (d.access.contains(AInline)){
+					variableAllocator.setInline(n, e, f, t);
+					return;
+				}
+				
+				var eReg:Int = -1;
+				if (e != null){
+					eReg = compileExpr(e);
+				}
+
+				add_instruction(TOP_LEVEL_VAR_DECLARATION);
+				add_instruction(getConstant(n));
+				add_instruction(variableAllocator.setVariable(n, f, t));
+				add_instruction(eReg);
+
+				registerAllocator.free(eReg);
 		}
 	}
 
-	private function compileExpr(e:Expression) {
+	private function compileExpr(e:Expression):Int {
 		try {
 			switch (e.kind) {
+				case ECall(p, args):
+					return -1;
+				case EBool(b):
+					var reg:Int = registerAllocator.allocateRegister();
+					add_instruction(b ? TRUE : FALSE);
+					add_instruction(reg);
+
+					return reg;
+				case ENull:
+					var reg:Int = registerAllocator.allocateRegister();
+					add_instruction(NULL);
+					add_instruction(reg);
+
+					return reg;
 				case EInt(i):
 					var reg = registerAllocator.allocateRegister();
 					add_instruction(LOAD_CONSTANT);
@@ -83,6 +113,21 @@ class Compiler {
 					registerAllocator.free(regL);
 					registerAllocator.free(regR);
 					return regT;
+
+				case EIdent(i):
+					if (!variableAllocator.exists(i)){
+						throw "Variable " +i +" doesn't exists.";
+					}
+					if (variableAllocator.isInline(i)){
+						var reg:Int = compileExpr(variableAllocator.getInline(i));
+						return reg;
+					}
+					var eReg:Int = registerAllocator.allocateRegister();
+					add_instruction(LOAD_LOCAL);
+					add_instruction(eReg);
+					add_instruction(variableAllocator.getVariable(i));
+
+					return eReg;
 
 				case _:
 					return -1;
