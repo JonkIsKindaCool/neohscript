@@ -1,112 +1,213 @@
 package hscript.bytecode;
 
+import hscript.errors.HscriptException;
+import hscript.ast.Span;
 import haxe.Exception;
 import hscript.ast.expressions.Expression;
+import hscript.ast.expressions.ExpressionKind;
 import hscript.bytecode.allocators.VariableAllocator;
 import hscript.bytecode.allocators.RegisterAllocator;
-import hscript.ast.declarations.Declaration;
 
 class Compiler {
 	private var constantPool:Array<Dynamic> = [];
 	private var instructions:Array<Instruction> = [];
 
 	private var name:String;
-	private var ast:Array<Declaration>;
 
 	private var registerAllocator:RegisterAllocator;
 	private var variableAllocator:VariableAllocator;
+	private var depth:Int = 0;
+
+	private var currentExpr:Expression;
 
 	public function new() {}
 
-	public function compile(ast:Array<Declaration>, ?name:String = "<unnamed>"):Program {
+	public function compile(ast:Expression, ?name:String = "<unnamed>"):Program {
 		this.name = name;
 		constantPool = [];
 		instructions = [];
+		depth = 0;
 
 		registerAllocator = new RegisterAllocator();
 		variableAllocator = new VariableAllocator(this);
 
-		for (decl in ast) {
-			compileDecl(decl);
-		}
+		compileExpr(ast);
 
-		return {instructions: instructions, constantPool: constantPool};
+		return {instructions: instructions, constantPool: constantPool, filename: name};
 	}
 
-	private function compileDecl(d:Declaration) {
-		switch (d.kind) {
-			case DExpr(e):
-				compileExpr(e);
-			case DVar(n, f, e, t):
-				if (d.access.contains(AInline)){
-					variableAllocator.setInline(n, e, f, t);
-					return;
-				}
-				
-				var eReg:Int = -1;
-				if (e != null){
-					eReg = compileExpr(e);
-				}
+	private inline function pushScope() {
+		registerAllocator.pushScope();
+		variableAllocator.pushScope();
 
-				add_instruction(TOP_LEVEL_VAR_DECLARATION);
-				add_instruction(getConstant(n));
-				add_instruction(variableAllocator.setVariable(n, f, t));
-				add_instruction(eReg);
+		depth++;
+	}
 
-				registerAllocator.free(eReg);
-		}
+	private inline function popScope() {
+		registerAllocator.popScope();
+		variableAllocator.popScope();
+
+		depth--;
 	}
 
 	private function compileExpr(e:Expression):Int {
+		currentExpr = e;
 		try {
 			switch (e.kind) {
+				case EBlock(arr):
+					for (a in arr) {
+						switch (a.kind) {
+							case EFunction(name, _, _, _) if (name != null):
+								variableAllocator.declareVariable(name, true);
+							case _:
+						}
+					}
+					var last:Int = -1;
+					for (a in arr)
+						last = compileExpr(a);
+					return last;
+
 				case ECall(p, args):
-					return -1;
+					var argRegs:Array<Int> = [];
+					for (a in args)
+						argRegs.push(compileExpr(a));
+
+					var target:Int = compileExpr(p);
+
+					var reg:Int = registerAllocator.allocateRegister();
+
+					add_header_instruction(CALL);
+					add_instruction(target);
+					add_instruction(reg);
+					add_instruction(args.length);
+					for (r in argRegs)
+						add_instruction(r);
+
+					registerAllocator.free(target);
+					for (r in argRegs)
+						registerAllocator.free(r);
+
+					return reg;
+
 				case EBool(b):
 					var reg:Int = registerAllocator.allocateRegister();
-					add_instruction(b ? TRUE : FALSE);
+					add_header_instruction(b ? TRUE : FALSE);
 					add_instruction(reg);
-
 					return reg;
+
+				case EFunction(name, args, ret, body):
+					if (name != null) {
+						add_header_instruction(FUNCTION);
+						add_instruction(getConstant(name));
+						add_instruction(depth);
+						add_instruction(variableAllocator.declareVariable(name, true));
+					} else {
+						add_header_instruction(ANONYMOUS_FUNCTION);
+					}
+
+					pushScope();
+
+					add_instruction(args.length);
+					for (arg in args) {
+						var argTypeName = arg.type != null && arg.type.name != null ? arg.type.name : "Dynamic";
+						add_instruction(variableAllocator.setVariable(arg.name, false, arg.type));
+						add_instruction(getConstant(argTypeName));
+					}
+
+					var retTypeName = (ret != null && ret.name != null) ? ret.name : "Dynamic";
+					add_instruction(getConstant(retTypeName));
+
+					var len_loc:Int = instructions.length;
+					add_instruction(0);
+
+					compileExpr(body);
+
+					instructions[len_loc] = instructions.length - (len_loc + 1);
+
+					popScope();
+
+					return -1;
+
 				case ENull:
 					var reg:Int = registerAllocator.allocateRegister();
-					add_instruction(NULL);
+					add_header_instruction(NULL);
 					add_instruction(reg);
-
 					return reg;
+
 				case EInt(i):
 					var reg = registerAllocator.allocateRegister();
-					add_instruction(LOAD_CONSTANT);
+					add_header_instruction(LOAD_CONSTANT);
 					add_instruction(reg);
 					add_instruction(getConstant(i));
 					return reg;
 
-				case EFloat(i):
+				case EFloat(f):
 					var reg = registerAllocator.allocateRegister();
-					add_instruction(LOAD_CONSTANT);
+					add_header_instruction(LOAD_CONSTANT);
 					add_instruction(reg);
-					add_instruction(getConstant(i));
+					add_instruction(getConstant(f));
 					return reg;
 
-				case EString(i):
+				case EString(s):
 					var reg = registerAllocator.allocateRegister();
-					add_instruction(LOAD_CONSTANT);
+					add_header_instruction(LOAD_CONSTANT);
 					add_instruction(reg);
-					add_instruction(getConstant(i));
+					add_instruction(getConstant(s));
 					return reg;
 
 				case EBinop(o, l, r):
+					if (o == OpAssign) {
+						var valReg = compileExpr(r);
+						switch (l.kind) {
+							case EIdent(n):
+								if (!variableAllocator.exists(n))
+									throw 'Variable $n doesn\'t exist.';
+								add_header_instruction(STORE_LOCAL);
+								add_instruction(valReg);
+								add_instruction(variableAllocator.getVariable(n));
+							case _:
+								throw "Invalid assignment target";
+						}
+						registerAllocator.free(valReg);
+						return -1;
+					}
+
+					switch (o) {
+						case OpAssignOp(inner):
+							return compileExpr({
+								kind: EBinop(OpAssign, l, {kind: EBinop(inner, l, r), span: r.span}),
+								span: e.span
+							});
+						case _:
+					}
+
 					var regL = compileExpr(l);
 					var regR = compileExpr(r);
 					var regT = registerAllocator.allocateRegister();
-					switch (o) {
-						case OpAdd: add_instruction(OP_ADD);
-						case OpSub: add_instruction(OP_SUB);
-						case OpMult: add_instruction(OP_MULT);
-						case OpDiv: add_instruction(OP_DIV);
 
-						case _:
+					switch (o) {
+						case OpAdd: add_header_instruction(OP_ADD);
+						case OpSub: add_header_instruction(OP_SUB);
+						case OpMult: add_header_instruction(OP_MULT);
+						case OpDiv: add_header_instruction(OP_DIV);
+						case OpMod: add_header_instruction(OP_MOD);
+						case OpEq: add_header_instruction(OP_EQUAL);
+						case OpNotEq: add_header_instruction(OP_NOT_EQUAL);
+						case OpGt: add_header_instruction(OP_GT);
+						case OpGte: add_header_instruction(OP_GTE);
+						case OpLt: add_header_instruction(OP_LT);
+						case OpLte: add_header_instruction(OP_LTE);
+						case OpBoolAnd: add_header_instruction(OP_BOOL_AND);
+						case OpBoolOr: add_header_instruction(OP_BOOL_OR);
+						case OpAnd: add_header_instruction(OP_AND);
+						case OpOr: add_header_instruction(OP_OR);
+						case OpXor: add_header_instruction(OP_XOR);
+						case OpShl: add_header_instruction(OP_SHL);
+						case OpShr: add_header_instruction(OP_SHR);
+						case OpUShr: add_header_instruction(OP_USHR);
+						case _: throw 'Unsupported binary operator: $o';
 					}
+
 					add_instruction(regL);
 					add_instruction(regR);
 					add_instruction(regT);
@@ -114,31 +215,150 @@ class Compiler {
 					registerAllocator.free(regR);
 					return regT;
 
+				case EUnop(o, p, post):
+					var src = compileExpr(p);
+					var dst = registerAllocator.allocateRegister();
+					switch (o) {
+						case OpNeg:
+							add_header_instruction(OP_NEG);
+							add_instruction(src);
+							add_instruction(dst);
+						case OpNot:
+							add_header_instruction(OP_NOT);
+							add_instruction(src);
+							add_instruction(dst);
+						case OpIncrement | OpDecrement:
+							var one = registerAllocator.allocateRegister();
+							add_header_instruction(LOAD_CONSTANT);
+							add_instruction(one);
+							add_instruction(getConstant(1));
+							add_instruction(o == OpIncrement ? OP_ADD : OP_SUB);
+							add_instruction(src);
+							add_instruction(one);
+							add_instruction(dst);
+							registerAllocator.free(one);
+
+							switch (p.kind) {
+								case EIdent(n):
+									add_header_instruction(STORE_LOCAL);
+									add_instruction(dst);
+									add_instruction(variableAllocator.getVariable(n));
+								case _:
+							}
+						case _: throw 'Unsupported unary operator: $o';
+					}
+					registerAllocator.free(src);
+					return dst;
+
 				case EIdent(i):
-					if (!variableAllocator.exists(i)){
-						throw "Variable " +i +" doesn't exists.";
-					}
-					if (variableAllocator.isInline(i)){
-						var reg:Int = compileExpr(variableAllocator.getInline(i));
-						return reg;
-					}
+					if (!variableAllocator.exists(i))
+						throw 'Variable $i doesn\'t exist.';
 					var eReg:Int = registerAllocator.allocateRegister();
-					add_instruction(LOAD_LOCAL);
+					add_header_instruction(LOAD_LOCAL);
 					add_instruction(eReg);
 					add_instruction(variableAllocator.getVariable(i));
-
 					return eReg;
+
+				case EVar(n, f, e, t):
+					var eReg:Int = -1;
+					if (e != null)
+						eReg = compileExpr(e);
+
+					var slot:Int = variableAllocator.setVariable(n, f, t);
+					add_header_instruction(VAR_DECLARATION);
+					add_instruction(getConstant(n));
+					add_instruction(depth);
+					add_instruction(slot);
+					add_instruction(getConstant(t?.name ?? "Dynamic"));
+					add_instruction(eReg);
+
+					if (eReg != -1)
+						registerAllocator.free(eReg);
+					return -1;
+
+				case EReturn(e):
+					var reg:Int = -1;
+					if (e != null)
+						reg = compileExpr(e);
+					add_header_instruction(RETURN);
+					add_instruction(reg);
+					if (reg != -1)
+						registerAllocator.free(reg);
+					return -1;
+
+				case EIf(cond, then, elseExpr):
+					var condReg:Int = compileExpr(cond);
+
+					add_header_instruction(JUMP_IF_FALSE);
+					add_instruction(condReg);
+
+					var patchFalse:Int = instructions.length;
+					add_instruction(0);
+					registerAllocator.free(condReg);
+
+					compileExpr(then);
+
+					if (elseExpr != null) {
+						add_header_instruction(JUMP);
+						var patchEnd = instructions.length;
+						add_instruction(0);
+
+						instructions[patchFalse] = instructions.length - (patchFalse + 1);
+						compileExpr(elseExpr);
+
+						instructions[patchEnd] = instructions.length - (patchEnd + 1);
+					} else {
+						instructions[patchFalse] = instructions.length - (patchFalse + 1);
+					}
+					return -1;
+
+				case EWhile(cond, body):
+					var loopStart:Int = instructions.length;
+					var condReg:Int = compileExpr(cond);
+
+					add_header_instruction(JUMP_IF_FALSE);
+					add_instruction(condReg);
+
+					var patchExit:Int = instructions.length;
+
+					add_instruction(0);
+					registerAllocator.free(condReg);
+
+					compileExpr(body);
+
+					add_header_instruction(JUMP_BACK);
+					add_instruction(instructions.length - loopStart + 1);
+
+					instructions[patchExit] = instructions.length - (patchExit + 1);
+					return -1;
+
+				case EThrow(ex):
+					var reg:Int = compileExpr(ex);
+					add_header_instruction(THROW);
+					add_instruction(reg);
+					registerAllocator.free(reg);
+					return -1;
 
 				case _:
 					return -1;
 			}
 		} catch (m:Exception) {
-			#if debug 
-			throw '$name:${e.span.line}: characters ${e.span.start}-${e.span.end}: ${m.details()}';
-			#else 
-			throw '$name:${e.span.line}: characters ${e.span.start}-${e.span.end}: ${m.message}';
+			#if debug
+			throw new HscriptException('$name:${e.span.line}: characters ${e.span.start}-${e.span.end}: ${m.details()}', e.span);
+			#else
+			throw new HscriptException('$name:${e.span.line}: characters ${e.span.start}-${e.span.end}: ${m.message}', e.span);
 			#end
 		}
+		return -1;
+	}
+
+	private inline function add_header_instruction(i:Instruction, ?pos:Expression) {
+		pos ??= currentExpr;
+
+		add_instruction(i);
+		add_instruction(pos.span.line);
+		add_instruction(pos.span.start);
+		add_instruction(pos.span.end);
 	}
 
 	private inline function add_instruction(i:Instruction) {
@@ -147,12 +367,10 @@ class Compiler {
 
 	private function getConstant(v:Dynamic):Int {
 		var idx:Int = constantPool.indexOf(v);
-
 		if (idx == -1) {
 			idx = constantPool.length;
 			constantPool.push(v);
 		}
-
 		return idx;
 	}
 }

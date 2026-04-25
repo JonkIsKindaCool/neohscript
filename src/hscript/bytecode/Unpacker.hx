@@ -8,7 +8,8 @@ class Unpacker {
         var input:BytesInput = new BytesInput(bytes);
         var p:Program = {
             instructions: [],
-            constantPool: []
+            constantPool: [],
+            filename: "<unnamed>"
         };
 
         var headerLen:Int = input.readInt16();
@@ -19,6 +20,11 @@ class Unpacker {
 
         var versionLen:Int = input.readInt16();
         var version:String = input.readString(versionLen);
+
+        var nameLen:Int = input.readInt16();
+        var filename:String = input.readString(nameLen);
+
+        p.filename = filename;
 
         while (true){
             switch (input.readByte()){

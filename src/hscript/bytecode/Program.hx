@@ -4,4 +4,5 @@ package hscript.bytecode;
 class Program {
     public var instructions:Array<Instruction>;
     public var constantPool:Array<Dynamic>;
+    public var filename:String;
 }

@@ -35,6 +35,9 @@ enum ExpressionKind {
 	EThrow(e:Expression);
 
 	ETry(e:Expression, catches:Array<{name:String, type:ASTType, expr:Expression}>);
+
+    EVar(n:String, f:Bool, ?e:Expression, ?t:ASTType);
+	EWhile(c:Expression, b:Expression);
 }
 
 enum Access {

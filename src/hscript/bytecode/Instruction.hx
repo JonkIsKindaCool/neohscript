@@ -1,47 +1,64 @@
 package hscript.bytecode;
 
-enum abstract Instruction(Int) from Int to Int {	
+enum abstract Instruction(Int) from Int to Int {
+	// Memory
+	var LOAD_CONSTANT;
+	var LOAD_LOCAL;
+	var STORE_LOCAL;
+
+	// Calls
+	var CALL;
+	var FUNCTION;
+	var ANONYMOUS_FUNCTION;
+
+	// Literals
 	var TRUE;
 	var FALSE;
 	var NULL;
 
-    var LOAD_CONSTANT;
-	var LOAD_LOCAL;
+	// Variables
+	var VAR_DECLARATION;
 
-	var TOP_LEVEL_VAR_DECLARATION;
+	// Control flow
+	var RETURN;
+	var JUMP;
+	var JUMP_IF_FALSE;
+	var JUMP_IF_TRUE;
+	var JUMP_BACK;
 
-	var CALL;
+	// Exceptions
+	var THROW;
 
-    //Binary operators 
-	// OP lReg rReg targetReg
+	// Arithmetic  (lhs rhs dst)
 	var OP_ADD;
+	var OP_SUB;
 	var OP_MULT;
 	var OP_DIV;
-	var OP_SUB;
-	var OP_ASSIGN;
+	var OP_MOD;
+
+	// Unary arithmetic  (src dst)
+	var OP_NEG;
+
+	// Comparison  (lhs rhs dst)
 	var OP_EQUAL;
 	var OP_NOT_EQUAL;
-	var OP_GREATER;
-	var OP_GREATER_EQUAL;
-	var OP_LESS;
-	var OP_LESS_EQUAL;
+	var OP_GT;
+	var OP_GTE;
+	var OP_LT;
+	var OP_LTE;
+
+	// Boolean  (lhs rhs dst)
+	var OP_BOOL_AND;
+	var OP_BOOL_OR;
+
+	// Unary boolean  (src dst)
+	var OP_NOT;
+
+	// Bitwise  (lhs rhs dst)
 	var OP_AND;
 	var OP_OR;
 	var OP_XOR;
-	var OP_BOOL_AND;
-	var OP_BOOL_OR;
-	var OP_SHIFT_LEFT;
-	var OP_SHIFT_RIGHT;
-	var OP_U_SHIFT_RIGHT;
-	var OP_MODULO;
-	var OP_ASSIGN_OP;
-	var OP_INTERVAL;
-	var OP_NULL_COAL;
-
-    //Unaries
-	var OP_INCREMENT;
-	var OP_DECREMENT;
-	var OP_NOT;
-	var OP_NEG;
-	var OP_NEG_BITS;
+	var OP_SHL;
+	var OP_SHR;
+	var OP_USHR;
 }

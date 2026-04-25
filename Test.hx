@@ -1,3 +1,7 @@
-var a:Int = 1;
-var b:Float = a * 700.18293;
-var c:Float = b / 3;
+function sum(a: Int, b: Int) {
+	return a + b;
+}
+
+function oso() {
+	return sum(5, 4);
+}

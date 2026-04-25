@@ -1,8 +1,9 @@
 package hscript.ast;
 
+import hscript.errors.HscriptException;
+import haxe.macro.Expr;
 import haxe.Exception;
 import haxe.ds.GenericStack;
-import hscript.ast.declarations.Declaration;
 import hscript.ast.Span;
 import hscript.ast.expressions.ExpressionKind;
 import hscript.ast.expressions.Expression;
@@ -44,148 +45,143 @@ class Parser {
 
 	public function new() {}
 
-	public function parse(tokens:Array<Token>, file:String = "<unnamed>"):Array<Declaration> {
+	public function parse(tokens:Array<Token>, file:String = "<unnamed>"):Expression {
 		this.tokens = tokens;
 		this.pos = 0;
 		this.file = file;
 		this.current = tokens[0];
 
-		var arr:Array<Declaration> = [];
+		var arr:Array<Expression> = [];
 
 		while (!maybe(TEof)) {
 			try {
-				arr.push(parseDeclaration());
+				var e = parseExpression();
+				switch (e.kind) {
+					case EFunction(_, _, _, _) | EBlock(_):
+					default:
+						switch (e.kind) {
+							case EVar(_, _, _, _):
+							default: checkSemicolon();
+						}
+				}
+				arr.push(e);
 			} catch (e:Exception) {
-				throw '$file:${current.line}: characters ${current.start}-${current.end}: ${e.details()}';
+				throw new HscriptException('$file:${current.line}: characters ${current.start}-${current.end}: ${e.details()}', makeSpan(current));
 			}
 		}
 
-		return arr;
+		return {
+			kind: EBlock(arr),
+			span: {
+				file: file,
+				line: 0,
+				start: 0,
+				end: 0
+			}
+		};
 	}
 
-	function parseDeclaration():Declaration {
-		var realDeclaration:Bool = false;
-		var access:Array<Access> = [];
+	private function parseExpression():Expression {
+		var tok = advance();
 
-		switch (current.kind) {
-			case TKeyword(PUBLIC), TKeyword(PRIVATE), TKeyword(STATIC), TKeyword(INLINE):
-				realDeclaration = true;
-				while (true) {
-					switch (current.kind) {
-						case TKeyword(PUBLIC):
-							advance();
-							access.push(APublic);
-						case TKeyword(PRIVATE):
-							advance();
-							access.push(APrivate);
-						case TKeyword(INLINE):
-							advance();
-							access.push(AInline);
-						case TKeyword(STATIC):
-							advance();
-							access.push(AStatic);
-						case _:
-							break;
-					}
+		var e:Expression = switch (tok.kind) {
+			case TKeyword(VAR), TKeyword(FINAL):
+				var start:Span = makeSpan(tok);
+				var isConst:Bool = current.kind.equals(TKeyword(FINAL));
+
+				var name:String = getIdent();
+				var type:ASTType = null;
+				var e:Expression = null;
+				if (maybe(TColon)) {
+					type = parseType();
 				}
-			case TKeyword(VAR), TKeyword(FINAL), TKeyword(FUNCTION):
-				realDeclaration = true;
-			default:
-		}
 
-		if (realDeclaration) {
-			switch (current.kind) {
-				case TKeyword(VAR), TKeyword(FINAL):
-					var start:Span = makeSpan(current);
-					var isConst:Bool = current.kind.equals(TKeyword(FINAL));
-					advance();
+				if (isConst) {
+					try {
+						expect(TAssign);
+					} catch (e) {
+						throw 'Final variable $name must be initialized.';
+					}
+					e = parseExpression();
+				} else {
+					if (maybe(TAssign))
+						e = parseExpression();
+				}
 
+				checkSemicolon();
+
+				return {
+					kind: EVar(name, isConst, e, type),
+					span: mergeSpans(start, e?.span ?? start)
+				}
+			case TKeyword(FUNCTION):
+				var start:Span = makeSpan(tok);
+
+				var name:String = getIdent();
+				var args:Array<FunctionArgument> = [];
+				var type:ASTType = null;
+
+				expect(TLParen);
+				while (true) {
+					if (maybe(TRParen))
+						break;
+
+					var opt:Bool = maybe(TQuestion);
 					var name:String = getIdent();
 					var type:ASTType = null;
-					var e:Expression = null;
+					var def:Expression = null;
+
 					if (maybe(TColon)) {
 						type = parseType();
 					}
 
-					if (isConst) {
-						try {
-							expect(TAssign);
-						} catch (e) {
-							throw 'Static final variable $name must be initialized.';
-						}
-						e = parseExpression();
-					} else {
-						if (maybe(TAssign))
-							e = parseExpression();
+					if (maybe(TAssign))
+						def = parseExpression();
+
+					args.push({
+						name: name,
+						type: type,
+						def: def,
+						optional: opt
+					});
+
+					if (!maybe(TComma)) {
+						expect(TRParen);
+						break;
 					}
+				}
 
-					checkSemicolon();
+				if (maybe(TColon)) {
+					type = parseType();
+				}
 
-					return {
-						kind: DVar(name, isConst, e, type),
-						access: [],
-						span: makeComplexSpan(start, e?.span ?? start)
-					}
-				case _:
-					throw 'Expected Declaration, found anything else.';
-			}
-		}
+				var e:Expression = parseBlock();
 
-		var decl:Expression = parseExpression();
-		checkSemicolon();
-		return {
-			kind: DExpr(decl),
-			span: makeComplexSpan(decl.span, decl.span),
-			access: []
-		}
-	}
+				return {
+					kind: EFunction(name, args, type, e),
+					span: mergeSpans(start, e.span),
+				}
+			case TKeyword(RETURN):
+				var start:Span = makeSpan(tok);
+				var e:Expression = null;
+				if (!current.kind.equals(TSemicolon))
+					e = parseExpression();
 
-	public function parseExpression(minPrecedence:Int = 0):Expression {
-		var left:Expression = parsePrimitive();
-
-		while (true) {
-			var op:Binop = peekBinop();
-			if (op == null)
-				break;
-
-			var prec:Int = getPrecedence(op);
-			if (prec < minPrecedence)
-				break;
-
-			advance();
-
-			var nextMinPrec:Int = (isRightAssociative(op)) ? prec : prec + 1;
-
-			var right:Expression = parseExpression(nextMinPrec);
-
-			left = makeBinop(left, op, right);
-		}
-
-		return left;
-	}
-
-	function parseStatement(id:String, tok:Token):Expression {
-		switch (id) {
-			case _:
-				return makeExpr(EIdent(id), tok);
-		}
-	}
-
-	private function parsePrimitive():Expression {
-		var tok = advance();
-
-		return switch (tok.kind) {
+				return {
+					kind: EReturn(e),
+					span: mergeSpans(start, e?.span ?? start)
+				}
 			case TInt(i):
-				makeExpr(EInt(i), tok);
+				parsePostFix(makeExpr(EInt(i), tok));
 
 			case TFloat(f):
-				makeExpr(EFloat(f), tok);
+				parsePostFix(makeExpr(EFloat(f), tok));
 
 			case TString(s, singleQuote):
-				parsePostFix(makeExpr(EString(s), tok));
+				parsePostFix(parsePostFix(makeExpr(EString(s), tok)));
 
 			case TIdent(id):
-				parsePostFix(parseStatement(id, tok));
+				parsePostFix(makeExpr(EIdent(id), tok));
 
 			case TKeyword(TRUE):
 				makeExpr(EBool(true), tok);
@@ -204,33 +200,103 @@ class Parser {
 			case _:
 				throw 'Unexpected token in expression: ${Token.toLiteralString(tok.kind)}';
 		};
+
+		return e;
 	}
 
 	private function parsePostFix(e:Expression):Expression {
-		switch (current.kind) {
-			case TLParen:
-				advance();
-				var args:Array<Expression> = [];
-				while (true) {
-					if (current.kind.equals(TRParen)) {
+		while (true) {
+			switch (current.kind) {
+				case TLParen:
+					advance();
+					var args:Array<Expression> = [];
+					while (!current.kind.equals(TRParen)) {
+						args.push(parseExpression());
+						if (!maybe(TComma))
+							break;
+					}
+					var end = makeSpan(expect(TRParen));
+					e = {kind: ECall(e, args), span: mergeSpans(e.span, end)};
+
+				case TDot:
+					advance();
+					var field = getIdent();
+					e = {kind: EField(e, field), span: mergeSpans(e.span, makeSpan(current))};
+
+				case TLBracket:
+					advance();
+					var idx:Expression = parseExpression();
+					var end = makeSpan(expect(TRBracket));
+					e = {kind: EArray(e, idx), span: mergeSpans(e.span, end)};
+
+				default:
+					var op = peekBinop();
+					if (op != null) {
 						advance();
-						break;
+						if (op.match(OpNullCoal))
+							advance();
+						return makeBinop(op, e, parseExpression());
 					}
-					args.push(parseExpression());
-
-					if (!maybe(TComma)) {
-						expect(TRParen);
-						break;
-					}
-				}
-
-				return {
-					span: e.span,
-					kind: ECall(e, args)
-				}
-			default:
-				return e;
+					return e;
+			}
 		}
+		return e;
+	}
+
+	private function makeBinop(op:Binop, e1:Expression, e2:Expression):Expression {
+		switch (e2.kind) {
+			case EBinop(op2, e2l, e3):
+				var delta = getPrecedence(op) - getPrecedence(op2);
+				if (delta < 0 || (delta == 0 && !op.match(OpAssignOp(_))))
+					return {kind: EBinop(op2, makeBinop(op, e1, e2l), e3), span: mergeSpans(e2l.span, e3.span)};
+				else
+					return {kind: EBinop(op, e1, e2), span: mergeSpans(e1.span, e2.span)};
+			default:
+				return {kind: EBinop(op, e1, e2), span: mergeSpans(e1.span, e2.span)};
+		}
+	}
+
+	private function parseBlock():Expression {
+		if (current.kind.equals(TLBrace)) {
+			var start:Span = makeSpan(advance());
+			var end:Span = start;
+
+			var b:Array<Expression> = [];
+			while (true) {
+				if (current.kind.equals(TRBrace)) {
+					end = makeSpan(advance());
+					break;
+				}
+
+				var e = parseExpression();
+				switch (e.kind) {
+					case EFunction(_, _, _, _) | EBlock(_):
+					default:
+						switch (e.kind) {
+							case EVar(_, _, _, _):
+							default: checkSemicolon();
+						}
+				}
+
+				b.push(e);
+			}
+
+			return {
+				kind: EBlock(b),
+				span: mergeSpans(start, end)
+			}
+		}
+
+		var e = parseExpression();
+		switch (e.kind) {
+			case EFunction(_, _, _, _) | EBlock(_):
+			default:
+				switch (e.kind) {
+					case EVar(_, _, _, _):
+					default: checkSemicolon();
+				}
+		}
+		return e;
 	}
 
 	function makeExpr(kind:ExpressionKind, tok:Token):Expression {
@@ -302,14 +368,6 @@ class Parser {
 		};
 	}
 
-	private function makeBinop(left:Expression, op:Binop, right:Expression):Expression {
-		var span:Span = mergeSpans(left.span, right.span);
-		return {
-			kind: EBinop(op, left, right),
-			span: span,
-		};
-	}
-
 	function parseType():ASTType {
 		var name:String = getIdent();
 		var generic:Array<ASTType> = [];
@@ -341,6 +399,9 @@ class Parser {
 	}
 
 	function checkSemicolon() {
+		if (!NeoHscript.STRICT_SEMICOLONS)
+			return;
+		
 		if (!maybe(TSemicolon))
 			throw "Missing ;";
 	}

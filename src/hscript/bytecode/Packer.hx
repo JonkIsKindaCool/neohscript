@@ -12,6 +12,9 @@ class Packer {
         bytes.writeInt16("1.0.0".length);
 		bytes.writeString("1.0.0");
 
+        bytes.writeInt16(p.filename.length);
+		bytes.writeString(p.filename);
+
 		for (constant in p.constantPool) {
 			switch (Type.typeof(constant)) {
 				case TInt:
