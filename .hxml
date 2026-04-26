@@ -1,6 +1,0 @@
---library hscript-rewrite
---define debug
---class-path src
---resource Test.hx
---main Main
---interp

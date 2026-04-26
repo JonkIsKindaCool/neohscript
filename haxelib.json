@@ -1,0 +1,19 @@
+{
+    "name": "neohscript",
+    "url": "https://github.com/JonkIsKindaCool/neohscript",
+    "license": "MIT",
+    "tags": [
+        "cross",
+        "script",
+        "scripting",
+        "hscript"
+    ],
+    "description": "A recreation of hscript using a register based vm.",
+    "version": "1.0.0",
+    "classPath": "src/",
+    "releasenote": "Initial release, everything is working correctly.",
+    "contributors": [
+        "JonkIsKindaCool"
+    ],
+    "dependencies": {}
+}

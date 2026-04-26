@@ -6,10 +6,14 @@ enum abstract Instruction(Int) from Int to Int {
 	var LOAD_LOCAL;
 	var STORE_LOCAL;
 
+	//Getters
+	var FIELD;
+
 	// Calls
 	var CALL;
 	var FUNCTION;
 	var ANONYMOUS_FUNCTION;
+	var TRACE;
 
 	// Literals
 	var TRUE;

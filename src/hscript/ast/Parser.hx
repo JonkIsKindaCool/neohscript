@@ -57,7 +57,7 @@ class Parser {
 			try {
 				var e = parseExpression();
 				switch (e.kind) {
-					case EFunction(_, _, _, _) | EBlock(_):
+					case EFunction(_, _, _, _) | EBlock(_) | EIf(_, _, _) | EWhile(_, _):
 					default:
 						switch (e.kind) {
 							case EVar(_, _, _, _):
@@ -85,6 +85,13 @@ class Parser {
 		var tok = advance();
 
 		var e:Expression = switch (tok.kind) {
+			case TKeyword(WHILE):
+				expect(TLParen);
+				var cond:Expression = parseExpression();
+				expect(TRParen);
+
+				var body:Expression = parseBlock();
+				return makeExpr(EWhile(cond, body), tok);
 			case TKeyword(VAR), TKeyword(FINAL):
 				var start:Span = makeSpan(tok);
 				var isConst:Bool = current.kind.equals(TKeyword(FINAL));
@@ -114,6 +121,22 @@ class Parser {
 					kind: EVar(name, isConst, e, type),
 					span: mergeSpans(start, e?.span ?? start)
 				}
+			case TKeyword(IF):
+				expect(TLParen);
+				var cond:Expression = parseExpression();
+				expect(TRParen);
+
+				var b:Expression = parseBlock();
+				var e:Expression = null;
+
+				switch (current.kind) {
+					case TKeyword(ELSE):
+						advance();
+						e = parseBlock();
+					case _:
+				}
+
+				return makeExpr(EIf(cond, b, e), tok);
 			case TKeyword(FUNCTION):
 				var start:Span = makeSpan(tok);
 
@@ -270,7 +293,7 @@ class Parser {
 
 				var e = parseExpression();
 				switch (e.kind) {
-					case EFunction(_, _, _, _) | EBlock(_):
+					case EFunction(_, _, _, _) | EBlock(_) | EIf(_, _, _) | EWhile(_, _):
 					default:
 						switch (e.kind) {
 							case EVar(_, _, _, _):
@@ -289,7 +312,7 @@ class Parser {
 
 		var e = parseExpression();
 		switch (e.kind) {
-			case EFunction(_, _, _, _) | EBlock(_):
+			case EFunction(_, _, _, _) | EBlock(_) | EIf(_, _, _) | EWhile(_, _):
 			default:
 				switch (e.kind) {
 					case EVar(_, _, _, _):
@@ -401,7 +424,7 @@ class Parser {
 	function checkSemicolon() {
 		if (!NeoHscript.STRICT_SEMICOLONS)
 			return;
-		
+
 		if (!maybe(TSemicolon))
 			throw "Missing ;";
 	}
@@ -419,14 +442,6 @@ class Parser {
 			case TXorAssign: OpAssignOp(OpXor);
 			default: OpAssign;
 		};
-	}
-
-	function makeComplexSpan(s:Span, e:Span):ComplexSpan {
-		return {
-			file: file,
-			start: s,
-			end: e
-		}
 	}
 
 	function makeSpan(token:Token):Span {

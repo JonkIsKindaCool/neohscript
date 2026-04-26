@@ -20,16 +20,18 @@ class Compiler {
 
 	private var currentExpr:Expression;
 
-	public function new() {}
+	public function new() {
+		registerAllocator = new RegisterAllocator();
+		variableAllocator = new VariableAllocator(this);
+
+		variableAllocator.setVariable("trace", true);
+	}
 
 	public function compile(ast:Expression, ?name:String = "<unnamed>"):Program {
 		this.name = name;
 		constantPool = [];
 		instructions = [];
 		depth = 0;
-
-		registerAllocator = new RegisterAllocator();
-		variableAllocator = new VariableAllocator(this);
 
 		compileExpr(ast);
 
@@ -67,6 +69,16 @@ class Compiler {
 						last = compileExpr(a);
 					return last;
 
+				case EField(p, f):
+					var r:Int = compileExpr(p);
+					var reg:Int = registerAllocator.allocateRegister();
+					add_header_instruction(FIELD);
+					add_instruction(r);
+					add_instruction(reg);
+					add_instruction(getConstant(f));
+
+					return reg;
+
 				case ECall(p, args):
 					var argRegs:Array<Int> = [];
 					for (a in args)
@@ -76,7 +88,7 @@ class Compiler {
 
 					var reg:Int = registerAllocator.allocateRegister();
 
-					add_header_instruction(CALL);
+					add_header_instruction(p.kind.equals(EIdent("trace")) ? TRACE : CALL);
 					add_instruction(target);
 					add_instruction(reg);
 					add_instruction(args.length);

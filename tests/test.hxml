@@ -1,0 +1,9 @@
+--resource scripts/Test1.hx
+--resource scripts/While.hx
+--resource scripts/Functions.hx
+--resource scripts/Externals.hx
+
+--library neohscript
+--class-path src
+--main Main
+--interp
