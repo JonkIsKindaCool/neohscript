@@ -115,7 +115,12 @@ class VM {
 					var dst:Int = getInstruction();
 					var target:String = constants[getInstruction()];
 
-					return registers[dst] = Reflect.getProperty(registers[src], target);
+					var parent:Dynamic = registers[src];
+
+					if (!Reflect.hasField(parent, target))
+						throw 'Missing fields for this';
+
+					return registers[dst] = Reflect.getProperty(parent, target);
 
 				case CALL, TRACE:
 					var target:Int = getInstruction();
@@ -157,9 +162,9 @@ class VM {
 					for (j in 0...bodyLen)
 						frame.push(instructions[bodyStart + j]);
 
-					pushScope();
-
 					var f:Dynamic = Reflect.makeVarArgs(function(hxArgs:Array<Dynamic>) {
+						pushScope();
+
 						for (k in 0...argSlots.length) {
 							var val:Dynamic = (k < hxArgs.length) ? hxArgs[k] : null;
 							define(argSlots[k], val, null, true);
@@ -187,11 +192,13 @@ class VM {
 						instructions = savedInstructions;
 						returning = savedReturning;
 
+						popScope();
+
 						return result;
 					});
 
 					if (fnName != null) {
-						define(name, f, null, true);
+						define(fnName, f, null, true);
 					}
 
 					return f;
