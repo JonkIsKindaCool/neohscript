@@ -1,5 +1,9 @@
 package hscript.vm;
 
+import hscript.ast.expressions.ExpressionKind.ASTType;
+import hscript.scopes.contexts.Context;
+import hscript.scopes.contexts.DefaultContext;
+import hscript.scopes.Scope;
 import haxe.Log;
 import hscript.ast.Span;
 import haxe.Exception;
@@ -23,11 +27,10 @@ private class VariableSlot {
 	  • constants  – literal pool embedded in the bytecode
 **/
 class VM {
-	private var variablesTable:Map<String, Int>;
+	public var context:Context;
 
 	private var registers:Array<Dynamic>;
 	private var constants:Array<Dynamic>;
-	private var variables:Array<VariableSlot>;
 	private var name:String;
 
 	private var instructions:Array<Instruction>;
@@ -36,23 +39,12 @@ class VM {
 	private var returning:Bool = false;
 	private var returnValue:Dynamic = null;
 
-	public function new() {
-		registers = [];
-		variables = [];
-		variablesTable = [];
+	private var currentScope:Scope;
 
-		variables[0] = {
-			value: function(a:Dynamic, pos:Span) {
-				var pos:PosInfos = {
-					fileName: pos.file,
-					lineNumber: pos.line,
-					className: "<unnamed>",
-					methodName: "<unnamed>"
-				};
-				Log.trace(a, pos);
-			},
-			type: "Dynamic"
-		}
+	public function new(?context:Context) {
+		this.context = this.context ?? new DefaultContext();
+
+		registers = [];
 	}
 
 	public function execute(p:Program):Dynamic {
@@ -61,6 +53,8 @@ class VM {
 		constants = p.constantPool;
 		pc = 0;
 		returning = false;
+
+		currentScope = this.context.globals;
 
 		var last:Dynamic = null;
 		while (pc < instructions.length) {
@@ -72,10 +66,6 @@ class VM {
 		}
 
 		return last;
-	}
-
-	public function getGlobal(name:String):Dynamic {
-		return variables[variablesTable[name]];
 	}
 
 	private function executeInstruction(i:Instruction):Dynamic {
@@ -92,7 +82,7 @@ class VM {
 						elements.push(registers[getInstruction()]);
 
 					var reg:Int = getInstruction();
-					
+
 					return registers[reg] = elements;
 
 				case INDEX:
@@ -111,21 +101,14 @@ class VM {
 
 				case LOAD_LOCAL:
 					var reg:Int = getInstruction();
-					var local:Int = getInstruction();
-					return registers[reg] = variables[local].value;
+					var local:String = constants[getInstruction()];
+					return registers[reg] = get(local);
 
 				case STORE_LOCAL:
 					var src:Int = getInstruction();
-					var local:Int = getInstruction();
-					var variable:VariableSlot = variables[local];
+					var local:String = constants[getInstruction()];
 
-					if (isCompatible(registers[src], variable.type)) {
-						variable.value = registers[src];
-					} else {
-						throw 'Expected ${variable.type}';
-					}
-
-					return variables[local].value;
+					return set(local, registers[src]);
 
 				case FIELD:
 					var src:Int = getInstruction();
@@ -149,23 +132,18 @@ class VM {
 
 				case ANONYMOUS_FUNCTION, FUNCTION:
 					var fnName:String = null;
-					var targetVar:Null<Int> = null;
-					var depth:Int = 0;
 
 					if (i == FUNCTION) {
 						fnName = constants[getInstruction()];
-						depth = getInstruction();
-						targetVar = getInstruction();
 					}
 
 					var argsLen:Int = getInstruction();
-					var argSlots:Array<Int> = [];
+					var argSlots:Array<String> = [];
 					var argTypes:Array<String> = [];
 
 					for (_ in 0...argsLen) {
-						argSlots.push(getInstruction());
-						var typeIdx:Int = getInstruction();
-						argTypes.push(constants[typeIdx]);
+						argSlots.push(constants[getInstruction()]);
+						argTypes.push(constants[getInstruction()]);
 					}
 
 					var returnTypeIdx:Int = getInstruction();
@@ -179,15 +157,12 @@ class VM {
 					for (j in 0...bodyLen)
 						frame.push(instructions[bodyStart + j]);
 
-					var capturedVars:Array<VariableSlot> = variables;
+					pushScope();
 
 					var f:Dynamic = Reflect.makeVarArgs(function(hxArgs:Array<Dynamic>) {
 						for (k in 0...argSlots.length) {
 							var val:Dynamic = (k < hxArgs.length) ? hxArgs[k] : null;
-							if (!isCompatible(val, argTypes[k])) {
-								throw 'Type error: Argument ${k + 1} of ${fnName != null ? fnName : "Dynamic"} expected ${argTypes[k]}, got ${Type.typeof(val)}';
-							}
-							capturedVars[argSlots[k]] = {value: val, type: argTypes[k]};
+							define(argSlots[k], val, null, true);
 						}
 
 						var savedPc = pc;
@@ -215,14 +190,8 @@ class VM {
 						return result;
 					});
 
-					if (targetVar != null) {
-						capturedVars[targetVar] = {
-							value: f,
-							type: "Dynamic"
-						};
-
-						if (depth == 0)
-							variablesTable[fnName] = targetVar;
+					if (fnName != null) {
+						define(name, f, null, true);
 					}
 
 					return f;
@@ -236,16 +205,10 @@ class VM {
 
 				case VAR_DECLARATION:
 					var name:String = constants[getInstruction()];
-					var depth:Int = getInstruction();
-					var pos:Int = getInstruction();
+					var const:Bool = getInstruction() == 1;
 					var type:String = constants[getInstruction()];
 					var reg:Int = getInstruction();
-					variables[pos] = {
-						value: (reg == -1) ? null : registers[reg],
-						type: type
-					};
-					if (depth == 0)
-						variablesTable[name] = pos;
+					define(name, (reg == -1) ? null : registers[reg], null, const);
 					return null;
 
 				case RETURN:
@@ -414,6 +377,38 @@ class VM {
 			});
 			#end
 		}
+	}
+
+	public function pushScope() {
+		currentScope = new Scope(currentScope);
+	}
+
+	public function popScope() {
+		currentScope = currentScope.parent;
+	}
+
+	public function get(name:String):Dynamic {
+		if (currentScope == null)
+			return context.getVariable(name);
+
+		return currentScope.get(name);
+	}
+
+	public function define(name:String, value:Dynamic, ?type:ASTType, ?const:Bool = false) {
+		if (currentScope == null) {
+			context.defineVariable(name, value, type, const);
+			return;
+		}
+
+		currentScope.define(name, value, type, const);
+	}
+
+	public function set(name:String, value:Dynamic):Dynamic {
+		if (currentScope == null) {
+			return context.setVariable(name, value);
+		}
+
+		return currentScope.set(name, value);
 	}
 
 	private inline function getInstruction():Int {

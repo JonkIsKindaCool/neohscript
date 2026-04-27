@@ -1,3 +1,4 @@
 function main() {
-    return [0...5];
+    trace(Math.PI);
+    return 2+ 2;
 }

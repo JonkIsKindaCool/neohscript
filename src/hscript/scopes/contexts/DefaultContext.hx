@@ -4,19 +4,28 @@ import hscript.ast.expressions.ExpressionKind.ASTType;
 import haxe.Rest;
 
 class DefaultContext implements Context {
-    public var globals:Scope;
+	public var globals:Scope;
 
-    public function callFunction(name:String, arg:Rest<Dynamic>):Dynamic {
-        throw new haxe.exceptions.NotImplementedException();
-    }
+	public function new() {
+		globals = new Scope();
 
-    public function setVariable(name:String, value:Dynamic, ?type:ASTType, ?const:Bool):Dynamic {
-        throw new haxe.exceptions.NotImplementedException();
-    }
+		for (name => variable in NeoHscript.DEFAULT_IMPORTS)
+			defineVariable(name, variable);
+	}
 
-    public function getVariable(name:String):Dynamic {
-        throw new haxe.exceptions.NotImplementedException();
-    }
+	public function getVariable(name:String):Dynamic {
+		return globals.get(name);
+	}
 
-        
+	public function defineVariable(name:String, value:Dynamic, ?type:ASTType, ?const:Bool) {
+		globals.define(name, value, type, const);
+	}
+
+	public function setVariable(name:String, value:Dynamic):Dynamic {
+		return globals.set(name, value);
+	}
+
+	public function callFunction(name:String, args:Rest<Dynamic>):Dynamic {
+		return globals.callFunction(name, args);
+	}
 }

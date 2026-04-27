@@ -1,5 +1,8 @@
 package hscript;
 
+import haxe.Log;
+import haxe.PosInfos;
+import hscript.ast.Span;
 import haxe.extern.EitherType;
 import hscript.bytecode.Program;
 import hscript.bytecode.Instruction;
@@ -14,6 +17,35 @@ import hscript.ast.Parser;
 class NeoHscript {
 	public static var STRICT_SEMICOLONS:Bool = true;
 	public static var STATIC_TYPING:Bool = true;
+
+	public static var DEFAULT_IMPORTS:Map<String, Dynamic> = [
+		"trace" => function(a:Dynamic, pos:Span) {
+			var pos:PosInfos = {
+				fileName: pos.file,
+				lineNumber: pos.line,
+				className: "<unnamed>",
+				methodName: "<unnamed>"
+			};
+			Log.trace(a, pos);
+		},
+		'Reflect' => Reflect,
+		'Std' => Std,
+		'Math' => Math,
+		#if sys 'Sys' => Sys, #end
+		'Type' => Type,
+		'StringTools' => StringTools,
+		'Date' => Date,
+		'DateTools' => DateTools,
+		'Xml' => Xml,
+		'Int' => Int,
+		'String' => String,
+		'StringBuf' => StringBuf,
+		'Float' => Float,
+		'Bool' => Bool,
+		'Array' => Array,
+		'Lambda' => Lambda,
+		'EReg' => EReg
+	];
 
 	private var content:String;
 
@@ -31,25 +63,17 @@ class NeoHscript {
 	}
 
 	public function setGlobal(name:String, v:Dynamic) {
-		_stackedVariables.set(name, v);
+		vm.define(name, v);
 	}
 
 	public function getGlobal(name:String):Dynamic {
-		return vm.getGlobal(name);
+		return vm.get(name);
 	}
 
 	public function execute(script:String, ?file:String):Dynamic {
 		this.content = script;
 
 		var ast:Expression = parser.parse(Lexer.tokenify(content), file);
-		for (name => variable in _stackedVariables){
-			var id:Int = compiler.variableAllocator.setVariable(name, false);
-			vm.variables[id] = {
-				value: variable,
-				type: "Dynamic"
-			};
-			vm.variablesTable[name] = id;
-		}
 		var bytecode:Program = compiler.compile(ast, file);
 
 		return vm.execute(bytecode);

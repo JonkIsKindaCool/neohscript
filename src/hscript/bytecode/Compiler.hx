@@ -5,7 +5,6 @@ import hscript.ast.Span;
 import haxe.Exception;
 import hscript.ast.expressions.Expression;
 import hscript.ast.expressions.ExpressionKind;
-import hscript.bytecode.allocators.VariableAllocator;
 import hscript.bytecode.allocators.RegisterAllocator;
 
 class Compiler {
@@ -15,23 +14,17 @@ class Compiler {
 	private var name:String;
 
 	private var registerAllocator:RegisterAllocator;
-	private var variableAllocator:VariableAllocator;
-	private var depth:Int = 0;
 
 	private var currentExpr:Expression;
 
 	public function new() {
 		registerAllocator = new RegisterAllocator();
-		variableAllocator = new VariableAllocator(this);
-
-		variableAllocator.setVariable("trace", true);
 	}
 
 	public function compile(ast:Expression, ?name:String = "<unnamed>"):Program {
 		this.name = name;
 		constantPool = [];
 		instructions = [];
-		depth = 0;
 
 		compileExpr(ast);
 
@@ -40,16 +33,10 @@ class Compiler {
 
 	private inline function pushScope() {
 		registerAllocator.pushScope();
-		variableAllocator.pushScope();
-
-		depth++;
 	}
 
 	private inline function popScope() {
 		registerAllocator.popScope();
-		variableAllocator.popScope();
-
-		depth--;
 	}
 
 	private function compileExpr(e:Expression):Int {
@@ -57,13 +44,6 @@ class Compiler {
 		try {
 			switch (e.kind) {
 				case EBlock(arr):
-					for (a in arr) {
-						switch (a.kind) {
-							case EFunction(name, _, _, _) if (name != null):
-								variableAllocator.declareVariable(name, true);
-							case _:
-						}
-					}
 					var last:Int = -1;
 					for (a in arr)
 						last = compileExpr(a);
@@ -142,8 +122,6 @@ class Compiler {
 					if (name != null) {
 						add_header_instruction(FUNCTION);
 						add_instruction(getConstant(name));
-						add_instruction(depth);
-						add_instruction(variableAllocator.declareVariable(name, true));
 					} else {
 						add_header_instruction(ANONYMOUS_FUNCTION);
 					}
@@ -153,7 +131,7 @@ class Compiler {
 					add_instruction(args.length);
 					for (arg in args) {
 						var argTypeName = arg.type != null && arg.type.name != null ? arg.type.name : "Dynamic";
-						add_instruction(variableAllocator.setVariable(arg.name, false, arg.type));
+						add_instruction(getConstant(arg.name));
 						add_instruction(getConstant(argTypeName));
 					}
 
@@ -203,11 +181,9 @@ class Compiler {
 						var valReg = compileExpr(r);
 						switch (l.kind) {
 							case EIdent(n):
-								if (!variableAllocator.exists(n))
-									throw 'Variable $n doesn\'t exist.';
 								add_header_instruction(STORE_LOCAL);
 								add_instruction(valReg);
-								add_instruction(variableAllocator.getVariable(n));
+								add_instruction(getConstant(n));
 							case _:
 								throw "Invalid assignment target";
 						}
@@ -286,7 +262,7 @@ class Compiler {
 								case EIdent(n):
 									add_header_instruction(STORE_LOCAL);
 									add_instruction(dst);
-									add_instruction(variableAllocator.getVariable(n));
+									add_instruction(getConstant(n));
 								case _:
 							}
 						case _: throw 'Unsupported unary operator: $o';
@@ -295,12 +271,10 @@ class Compiler {
 					return dst;
 
 				case EIdent(i):
-					if (!variableAllocator.exists(i))
-						throw 'Variable $i doesn\'t exist.';
 					var eReg:Int = registerAllocator.allocateRegister();
 					add_header_instruction(LOAD_LOCAL);
 					add_instruction(eReg);
-					add_instruction(variableAllocator.getVariable(i));
+					add_instruction(getConstant(i));
 					return eReg;
 
 				case EVar(n, f, e, t):
@@ -308,11 +282,9 @@ class Compiler {
 					if (e != null)
 						eReg = compileExpr(e);
 
-					var slot:Int = variableAllocator.setVariable(n, f, t);
 					add_header_instruction(VAR_DECLARATION);
 					add_instruction(getConstant(n));
-					add_instruction(depth);
-					add_instruction(slot);
+					add_instruction(f ? 1 : 0);
 					add_instruction(getConstant(t?.name ?? "Dynamic"));
 					add_instruction(eReg);
 
