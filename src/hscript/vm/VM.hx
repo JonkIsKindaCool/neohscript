@@ -66,7 +66,7 @@ class VM {
 		while (pc < instructions.length) {
 			try {
 				last = executeInstruction(getInstruction());
-			} catch (e:Exception){
+			} catch (e:Exception) {
 				throw e;
 			}
 		}
@@ -84,6 +84,26 @@ class VM {
 		var end:Int = getInstruction();
 		try {
 			switch (i) {
+				case ARRAY:
+					var len:Int = getInstruction();
+					var elements:Array<Dynamic> = [];
+
+					for (_ in 0...len)
+						elements.push(registers[getInstruction()]);
+
+					var reg:Int = getInstruction();
+					
+					return registers[reg] = elements;
+
+				case INDEX:
+					var src:Int = getInstruction();
+					var trg:Int = getInstruction();
+					var reg:Int = getInstruction();
+
+					var e:Dynamic = registers[src][registers[trg]];
+
+					return registers[reg] = e;
+
 				case LOAD_CONSTANT:
 					var reg:Int = getInstruction();
 					var ci:Int = getInstruction();
@@ -367,6 +387,12 @@ class VM {
 					var r = getInstruction();
 					var t = getInstruction();
 					return registers[t] = registers[l] >>> registers[r];
+
+				case OP_INTERVAL:
+					var l = getInstruction();
+					var r = getInstruction();
+					var t = getInstruction();
+					return registers[t] = registers[l]...registers[r];
 
 				case _:
 					return null;

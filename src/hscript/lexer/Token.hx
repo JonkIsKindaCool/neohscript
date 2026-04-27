@@ -10,6 +10,10 @@ class Token {
 
 	public var kind:TokenKind;
 
+	public function toString() {
+		return toLiteralString(kind);
+	}
+
 	public static function toLiteralString(kind:TokenKind):String {
 		return switch (kind) {
 			case TInt(i): '$i';
@@ -75,6 +79,8 @@ class Token {
 			case TRBrace: "}";
 			case TLBracket: "[";
 			case TRBracket: "]";
+
+			case TInterval: "...";
 
 			case TEof: "<EOF>";
 		}

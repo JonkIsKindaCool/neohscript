@@ -47,6 +47,8 @@ enum TokenKind {
 	TOrAssign; // |=
 	TXorAssign; // ^=
 
+	TInterval;
+
 	TQuestion; // ?
 	TColon; // :
 	TArrow; // ->

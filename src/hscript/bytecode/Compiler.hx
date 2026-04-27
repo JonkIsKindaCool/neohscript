@@ -69,6 +69,37 @@ class Compiler {
 						last = compileExpr(a);
 					return last;
 
+				case EArrayDecl(e):
+					var regs:Array<Int> = [];
+					for (elem in e)
+						regs.push(compileExpr(elem));
+
+					add_header_instruction(ARRAY);
+					add_instruction(e.length);
+					for (r in regs)
+						add_instruction(r);
+
+					for (r in regs)
+						registerAllocator.free(r);
+
+					var reg:Int = registerAllocator.allocateRegister();
+					add_instruction(reg);
+					return reg;
+
+				case EArray(e, index):
+					var src:Int = compileExpr(e);
+					var target:Int = compileExpr(index);
+					registerAllocator.free(src);
+					registerAllocator.free(target);
+					var reg:Int = registerAllocator.allocateRegister();
+
+					add_header_instruction(INDEX);
+					add_instruction(src);
+					add_instruction(target);
+					add_instruction(reg);
+
+					return reg;
+
 				case EField(p, f):
 					var r:Int = compileExpr(p);
 					var reg:Int = registerAllocator.allocateRegister();
@@ -217,6 +248,7 @@ class Compiler {
 						case OpShl: add_header_instruction(OP_SHL);
 						case OpShr: add_header_instruction(OP_SHR);
 						case OpUShr: add_header_instruction(OP_USHR);
+						case OpInterval: add_header_instruction(OP_INTERVAL);
 						case _: throw 'Unsupported binary operator: $o';
 					}
 

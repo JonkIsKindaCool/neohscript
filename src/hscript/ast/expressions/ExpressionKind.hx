@@ -38,6 +38,7 @@ enum ExpressionKind {
 
     EVar(n:String, f:Bool, ?e:Expression, ?t:ASTType);
 	EWhile(c:Expression, b:Expression);
+	EDoWhile(c:Expression, b:Expression);
 }
 
 enum Access {

@@ -1,2 +1,6 @@
+--resource scripts/Test.hx
+
 --class-path src
+--class-path test
+--main Main
 --interp

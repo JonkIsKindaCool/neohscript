@@ -92,6 +92,10 @@ class Parser {
 
 				var body:Expression = parseBlock();
 				return makeExpr(EWhile(cond, body), tok);
+			case TKeyword(DO):
+				var b:Expression = parseBlock();
+				expect(TKeyword(WHILE));
+				null;
 			case TKeyword(VAR), TKeyword(FINAL):
 				var start:Span = makeSpan(tok);
 				var isConst:Bool = current.kind.equals(TKeyword(FINAL));
@@ -214,6 +218,28 @@ class Parser {
 
 			case TKeyword(NULL):
 				makeExpr(ENull, tok);
+
+			case TLBracket:
+				var elements:Array<Expression> = [];
+		
+				var end:Span = null;
+				while (true){
+					if (current.kind.equals(TRBracket)){
+						end = makeSpan(advance());
+						break;
+					}
+
+					elements.push(parseExpression());
+
+					if (!maybe(TComma)){
+						end = makeSpan(expect(TRBracket));
+						break;
+					}
+				}
+				parsePostFix({
+					kind: EArrayDecl(elements),
+					span: mergeSpans(makeSpan(tok), end)
+				});
 
 			case TLParen:
 				var e = parseExpression();
@@ -380,6 +406,8 @@ class Parser {
 			case TAndAssign: OpAssignOp(OpAnd);
 			case TOrAssign: OpAssignOp(OpOr);
 			case TXorAssign: OpAssignOp(OpXor);
+
+			case TInterval: OpInterval;
 
 			case TArrow: OpArrow;
 			case TQuestion:

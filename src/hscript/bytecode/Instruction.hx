@@ -14,11 +14,13 @@ enum abstract Instruction(Int) from Int to Int {
 	var FUNCTION;
 	var ANONYMOUS_FUNCTION;
 	var TRACE;
+	var INDEX;
 
 	// Literals
 	var TRUE;
 	var FALSE;
 	var NULL;
+	var ARRAY;
 
 	// Variables
 	var VAR_DECLARATION;
@@ -65,4 +67,7 @@ enum abstract Instruction(Int) from Int to Int {
 	var OP_SHL;
 	var OP_SHR;
 	var OP_USHR;
+
+	// Others
+	var OP_INTERVAL;
 }

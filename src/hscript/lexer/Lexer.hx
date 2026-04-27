@@ -299,7 +299,12 @@ class Lexer {
 					add(TColon, start, pos);
 
 				case '.'.code:
-					add(TDot, start, pos);
+					if (peek(0) == '.'.code && peek(1) == '.'.code){
+						advance();
+						advance();
+						add(TInterval, start, pos);
+					} else 
+						add(TDot, start, pos);
 				case ','.code:
 					add(TComma, start, pos);
 				case ';'.code:
