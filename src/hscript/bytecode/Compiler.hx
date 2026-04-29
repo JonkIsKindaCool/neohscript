@@ -237,6 +237,7 @@ class Compiler {
 
 				case EUnop(o, p, post):
 					var src = compileExpr(p);
+
 					var dst = registerAllocator.allocateRegister();
 					switch (o) {
 						case OpNeg:
@@ -248,22 +249,62 @@ class Compiler {
 							add_instruction(src);
 							add_instruction(dst);
 						case OpIncrement | OpDecrement:
-							var one = registerAllocator.allocateRegister();
-							add_header_instruction(LOAD_CONSTANT);
-							add_instruction(one);
-							add_instruction(getConstant(1));
-							add_instruction(o == OpIncrement ? OP_ADD : OP_SUB);
-							add_instruction(src);
-							add_instruction(one);
-							add_instruction(dst);
-							registerAllocator.free(one);
+							if (!post) {
+								var one:Int = registerAllocator.allocateRegister();
+								add_header_instruction(LOAD_CONSTANT);
+								add_instruction(one);
+								add_instruction(getConstant(1));
 
-							switch (p.kind) {
-								case EIdent(n):
-									add_header_instruction(STORE_LOCAL);
-									add_instruction(dst);
-									add_instruction(getConstant(n));
-								case _:
+								add_header_instruction(o == OpIncrement ? OP_ADD : OP_SUB);
+								add_instruction(src);
+								add_instruction(one);
+								add_instruction(dst);
+
+								registerAllocator.free(one);
+
+								switch (p.kind) {
+									case EIdent(n):
+										add_header_instruction(STORE_LOCAL);
+										add_instruction(dst);
+										add_instruction(getConstant(n));
+									case _:
+								}
+							} else {
+								var newVal:Int = registerAllocator.allocateRegister();
+								var one:Int = registerAllocator.allocateRegister();
+
+								add_header_instruction(LOAD_CONSTANT);
+								add_instruction(one);
+								add_instruction(getConstant(1));
+
+								add_header_instruction(o == OpIncrement ? OP_ADD : OP_SUB);
+								add_instruction(src);
+								add_instruction(one);
+								add_instruction(newVal);
+
+								registerAllocator.free(one);
+
+								switch (p.kind) {
+									case EIdent(n):
+										add_header_instruction(STORE_LOCAL);
+										add_instruction(newVal);
+										add_instruction(getConstant(n));
+									case _:
+								}
+
+								registerAllocator.free(newVal);
+
+								var zero:Int = registerAllocator.allocateRegister();
+								add_header_instruction(LOAD_CONSTANT);
+								add_instruction(zero);
+								add_instruction(getConstant(0));
+
+								add_header_instruction(OP_ADD);
+								add_instruction(src);
+								add_instruction(zero);
+								add_instruction(dst);
+
+								registerAllocator.free(zero);
 							}
 						case _: throw 'Unsupported unary operator: $o';
 					}

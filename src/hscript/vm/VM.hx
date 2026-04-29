@@ -255,6 +255,7 @@ class VM {
 					var l = getInstruction();
 					var r = getInstruction();
 					var t = getInstruction();
+					trace(registers[l], registers[r]);
 					return registers[t] = registers[l] + registers[r];
 				case OP_SUB:
 					var l = getInstruction();

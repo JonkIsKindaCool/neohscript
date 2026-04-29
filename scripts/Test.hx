@@ -1,4 +1,5 @@
 function main() {
-    trace(Math.AEAEA);
-    return 2+ 2;
+    var test = 13 * 2;
+    trace(test++);
+    return test;
 }

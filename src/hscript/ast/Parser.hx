@@ -85,13 +85,17 @@ class Parser {
 		var tok = advance();
 
 		var e:Expression = switch (tok.kind) {
+			case TPlusPlus:
+				makeExpr(EUnop(OpIncrement, parseExpression(), false), tok);
+			case TMinus:
+				makeExpr(EUnop(OpNeg, parseExpression(), false), tok);
 			case TKeyword(WHILE):
 				expect(TLParen);
 				var cond:Expression = parseExpression();
 				expect(TRParen);
 
 				var body:Expression = parseBlock();
-				return makeExpr(EWhile(cond, body), tok);
+				makeExpr(EWhile(cond, body), tok);
 			case TKeyword(DO):
 				var b:Expression = parseBlock();
 				expect(TKeyword(WHILE));
@@ -221,17 +225,17 @@ class Parser {
 
 			case TLBracket:
 				var elements:Array<Expression> = [];
-		
+
 				var end:Span = null;
-				while (true){
-					if (current.kind.equals(TRBracket)){
+				while (true) {
+					if (current.kind.equals(TRBracket)) {
 						end = makeSpan(advance());
 						break;
 					}
 
 					elements.push(parseExpression());
 
-					if (!maybe(TComma)){
+					if (!maybe(TComma)) {
 						end = makeSpan(expect(TRBracket));
 						break;
 					}
@@ -256,6 +260,8 @@ class Parser {
 	private function parsePostFix(e:Expression):Expression {
 		while (true) {
 			switch (current.kind) {
+				case TPlusPlus:
+					e = makeExpr(EUnop(OpIncrement, e, true), advance());
 				case TLParen:
 					advance();
 					var args:Array<Expression> = [];
