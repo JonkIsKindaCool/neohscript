@@ -1,5 +1,9 @@
 package hscript.ast;
 
+import hscript.data.ObjectValue;
+import hscript.data.FunctionArgument;
+import hscript.data.AnonymousValue;
+import hscript.data.Types;
 import hscript.errors.HscriptException;
 import haxe.macro.Expr;
 import haxe.Exception;
@@ -89,6 +93,21 @@ class Parser {
 				makeExpr(EUnop(OpIncrement, parseExpression(), false), tok);
 			case TMinus:
 				makeExpr(EUnop(OpNeg, parseExpression(), false), tok);
+			case TLBrace:
+				var objcs:Array<ObjectValue> = [];
+				while (!maybe(TRBrace)) {
+					var name:String = getIdent();
+					expect(TColon);
+					var value:Expression = parseExpression();
+
+					objcs.push({name: name, value: value});
+
+					if (!maybe(TComma)) {
+						expect(TRBrace);
+						break;
+					}
+				}
+				return makeExpr(EObjectDecl(objcs), tok);
 			case TKeyword(WHILE):
 				expect(TLParen);
 				var cond:Expression = parseExpression();
@@ -105,7 +124,7 @@ class Parser {
 				var isConst:Bool = current.kind.equals(TKeyword(FINAL));
 
 				var name:String = getIdent();
-				var type:ASTType = null;
+				var type:Types = null;
 				var e:Expression = null;
 				if (maybe(TColon)) {
 					type = parseType();
@@ -148,9 +167,13 @@ class Parser {
 			case TKeyword(FUNCTION):
 				var start:Span = makeSpan(tok);
 
-				var name:String = getIdent();
+				var name:String = null;
+
+				if (current.kind.match(TIdent(_)))
+					name = getIdent();
+
 				var args:Array<FunctionArgument> = [];
-				var type:ASTType = null;
+				var type:Types = null;
 
 				expect(TLParen);
 				while (true) {
@@ -159,7 +182,7 @@ class Parser {
 
 					var opt:Bool = maybe(TQuestion);
 					var name:String = getIdent();
-					var type:ASTType = null;
+					var type:Types = null;
 					var def:Expression = null;
 
 					if (maybe(TColon)) {
@@ -425,9 +448,28 @@ class Parser {
 		};
 	}
 
-	function parseType():ASTType {
+	function parseType():Types {
+		if (maybe(TLBrace)) {
+			var types:Array<AnonymousValue> = [];
+			while (!maybe(TRBrace)) {
+				var name:String = getIdent();
+				expect(TColon);
+				var type:Types = parseType();
+				types.push({
+					name: name,
+					type: type
+				});
+
+				if (!maybe(TComma)) {
+					expect(TRBrace);
+					break;
+				}
+			}
+
+			return TAnonymous(types);
+		}
 		var name:String = getIdent();
-		var generic:Array<ASTType> = [];
+		var generic:Array<Types> = [];
 
 		if (maybe(TLess)) {
 			while (true) {
@@ -439,10 +481,7 @@ class Parser {
 			}
 		}
 
-		return {
-			name: name,
-			generics: generic
-		}
+		return TSimple(name, generic);
 	}
 
 	function getIdent():String {

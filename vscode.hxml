@@ -1,3 +1,4 @@
+--library hscript-rewrite
 --resource scripts/Test.hx
 
 --class-path src

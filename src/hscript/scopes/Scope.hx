@@ -1,7 +1,9 @@
 package hscript.scopes;
 
+import hscript.utils.TypeUtils;
+import hscript.vm.VM;
+import hscript.data.Types;
 import haxe.Rest;
-import hscript.ast.expressions.ExpressionKind.ASTType;
 import haxe.ds.StringMap;
 
 class Scope {
@@ -14,7 +16,11 @@ class Scope {
 		variables = new StringMap();
 	}
 
-	public function define(name:String, value:Dynamic, ?type:ASTType, ?const:Bool = false) {
+	public function define(name:String, value:Dynamic, ?type:Types, ?const:Bool = false) {
+		if (!VM.isCompatible(value, type)) {
+			throw '${TypeUtils.getHaxeTypeName(Type.typeof(value), value)} should be ${TypeUtils.getHScriptType(type)}';
+		}
+
 		variables.set(name, {
 			value: value,
 			type: type,
@@ -34,10 +40,14 @@ class Scope {
 		if (v.const)
 			throw 'Cannot modify the value of constant $name';
 
+		if (!VM.isCompatible(value, v.type)) {
+			throw '${TypeUtils.getHaxeTypeName(Type.typeof(value), value)} should be ${TypeUtils.getHScriptType(v.type)}';
+		}
+
 		return v.value = value;
 	}
 
-	public function get(name:String):Dynamic {		
+	public function get(name:String):Dynamic {
 		if (parent != null && parent.exists(name))
 			return parent.get(name);
 
@@ -72,6 +82,6 @@ class Scope {
 @:structInit
 private class VariableSlot {
 	public var value:Dynamic;
-	public var type:ASTType;
+	public var type:Types;
 	public var const:Bool;
 }

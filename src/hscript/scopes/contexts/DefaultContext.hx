@@ -1,6 +1,6 @@
 package hscript.scopes.contexts;
 
-import hscript.ast.expressions.ExpressionKind.ASTType;
+import hscript.data.Types;
 import haxe.Rest;
 
 class DefaultContext implements Context {
@@ -17,7 +17,7 @@ class DefaultContext implements Context {
 		return globals.get(name);
 	}
 
-	public function defineVariable(name:String, value:Dynamic, ?type:ASTType, ?const:Bool) {
+	public function defineVariable(name:String, value:Dynamic, ?type:Types, ?const:Bool) {
 		globals.define(name, value, type, const);
 	}
 

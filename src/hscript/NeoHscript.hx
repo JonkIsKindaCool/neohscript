@@ -47,6 +47,30 @@ class NeoHscript {
 		'EReg' => EReg
 	];
 
+	public static var cacheVMS:Bool = true;
+
+	private static var _cachedVMS:Map<String, VM> = new Map();
+
+	public static function _resolveScript(path:String):VM {
+		if (cacheVMS) {
+			if (_cachedVMS.exists(path))
+				return _cachedVMS.get(path);
+		}
+
+		var module:Expression = _resolveModule(path);
+
+		if (module == null)
+			return null;
+
+		var program:Program = new Compiler().compile(module, path);
+
+		return null;
+	}
+
+	public static function _resolveModule(path:String):Expression {
+		return null;
+	}
+
 	private var content:String;
 
 	private var parser:Parser;

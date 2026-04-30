@@ -1,6 +1,8 @@
 package hscript.vm;
 
-import hscript.ast.expressions.ExpressionKind.ASTType;
+import hscript.data.AnonymousValue;
+import haxe.DynamicAccess;
+import hscript.data.Types;
 import hscript.scopes.contexts.Context;
 import hscript.scopes.contexts.DefaultContext;
 import hscript.scopes.Scope;
@@ -74,6 +76,10 @@ class VM {
 		var end:Int = getInstruction();
 		try {
 			switch (i) {
+				case MOVE:
+					var src:Int = getInstruction();
+					var dst:Int = getInstruction();
+					return registers[dst] = registers[src];
 				case ARRAY:
 					var len:Int = getInstruction();
 					var elements:Array<Dynamic> = [];
@@ -81,6 +87,17 @@ class VM {
 					for (_ in 0...len)
 						elements.push(registers[getInstruction()]);
 
+					var reg:Int = getInstruction();
+
+					return registers[reg] = elements;
+
+				case OBJECT:
+					var len:Int = getInstruction();
+					var elements:DynamicAccess<Dynamic> = {};
+
+					for (_ in 0...len){
+						elements.set(constants[getInstruction()], registers[getInstruction()]);
+					}
 					var reg:Int = getInstruction();
 
 					return registers[reg] = elements;
@@ -144,15 +161,20 @@ class VM {
 
 					var argsLen:Int = getInstruction();
 					var argSlots:Array<String> = [];
-					var argTypes:Array<String> = [];
+					var argTypes:Array<Types> = [];
 
 					for (_ in 0...argsLen) {
 						argSlots.push(constants[getInstruction()]);
-						argTypes.push(constants[getInstruction()]);
+						if (getInstruction() == 1)
+							argTypes.push(getType(getInstruction()));
+						else
+							argTypes.push(null);
 					}
 
-					var returnTypeIdx:Int = getInstruction();
-					var returnType:String = constants[returnTypeIdx];
+					var returnType:Types = null;
+
+					if (getInstruction() == 1)
+						returnType = getType(getInstruction());
 
 					var bodyLen:Int = getInstruction();
 					var bodyStart:Int = pc;
@@ -167,7 +189,7 @@ class VM {
 
 						for (k in 0...argSlots.length) {
 							var val:Dynamic = (k < hxArgs.length) ? hxArgs[k] : null;
-							define(argSlots[k], val, null, true);
+							define(argSlots[k], val, argTypes[k], true);
 						}
 
 						var savedPc = pc;
@@ -184,7 +206,9 @@ class VM {
 
 						var result = returning ? returnValue : last;
 
-						if (returnType != "Dynamic" && returnType != "Void" && !isCompatible(result, returnType)) {
+						if (!returnType.equals(TSimple("Dynamic"))
+							&& !returnType.equals(TSimple("Void"))
+							&& !isCompatible(result, returnType)) {
 							throw 'Type error: ${fnName != null ? fnName : "Dynamic"} should return ${returnType}, got ${Type.typeof(result)}';
 						}
 
@@ -201,7 +225,9 @@ class VM {
 						define(fnName, f, null, true);
 					}
 
-					return f;
+					var reg:Int = getInstruction();
+
+					return registers[reg] = f;
 
 				case TRUE:
 					return registers[getInstruction()] = true;
@@ -213,9 +239,14 @@ class VM {
 				case VAR_DECLARATION:
 					var name:String = constants[getInstruction()];
 					var const:Bool = getInstruction() == 1;
-					var type:String = constants[getInstruction()];
+					var type:Types = null;
+
+					if (getInstruction() == 1) {
+						type = getType(getInstruction());
+					}
+
 					var reg:Int = getInstruction();
-					define(name, (reg == -1) ? null : registers[reg], null, const);
+					define(name, (reg == -1) ? null : registers[reg], type, const);
 					return null;
 
 				case RETURN:
@@ -255,7 +286,6 @@ class VM {
 					var l = getInstruction();
 					var r = getInstruction();
 					var t = getInstruction();
-					trace(registers[l], registers[r]);
 					return registers[t] = registers[l] + registers[r];
 				case OP_SUB:
 					var l = getInstruction();
@@ -387,6 +417,32 @@ class VM {
 		}
 	}
 
+	private function getType(i:Instruction):Types {
+		switch (i) {
+			case 1:
+				var len:Int = getInstruction();
+				var types:Array<AnonymousValue> = [];
+				for (i in 0...len) {
+					types.push({
+						name: constants[getInstruction()],
+						type: getType(getInstruction())
+					});
+				}
+
+				return TAnonymous(types);
+			default:
+				var name:String = constants[getInstruction()];
+				var len:Int = getInstruction();
+				var generics:Array<Types> = [];
+
+				for (i in 0...len) {
+					generics.push(getType(getInstruction()));
+				}
+
+				return TSimple(name, generics);
+		}
+	}
+
 	public function pushScope() {
 		currentScope = new Scope(currentScope);
 	}
@@ -402,7 +458,7 @@ class VM {
 		return currentScope.get(name);
 	}
 
-	public function define(name:String, value:Dynamic, ?type:ASTType, ?const:Bool = false) {
+	public function define(name:String, value:Dynamic, ?type:Types, ?const:Bool = false) {
 		if (currentScope == null) {
 			context.defineVariable(name, value, type, const);
 			return;
@@ -423,33 +479,46 @@ class VM {
 		return instructions[pc++];
 	}
 
-	private function isCompatible(value:Dynamic, expected:String):Bool {
-		if (expected == null || value == null || expected == "Dynamic" || !NeoHscript.STATIC_TYPING)
+	public static function isCompatible(value:Dynamic, expected:Types):Bool {
+		if (expected == null || value == null || expected.equals(TSimple("Dynamic")) || !NeoHscript.STATIC_TYPING)
 			return true;
-
+		
 		switch (expected) {
-			case "Int":
-				return Std.isOfType(value, Int);
-			case "Float":
-				return Std.isOfType(value, Float) || Std.isOfType(value, Int);
-			case "Bool":
-				return Std.isOfType(value, Bool);
-			case "String":
-				return Std.isOfType(value, String);
-			case "Array":
-				return Std.isOfType(value, Array);
-			case "Void":
+			case TSimple(name, generics):
+				switch (name) {
+					case "Int":
+						return Std.isOfType(value, Int);
+					case "Float":
+						return Std.isOfType(value, Float) || Std.isOfType(value, Int);
+					case "Bool":
+						return Std.isOfType(value, Bool);
+					case "String":
+						return Std.isOfType(value, String);
+					case "Array":
+						return Std.isOfType(value, Array);
+					case "Void":
+						return true;
+					default:
+						try {
+							var cls = Type.resolveClass(name);
+							if (cls != null)
+								return Std.isOfType(value, cls);
+						} catch (e:Dynamic) {}
+
+						return false;
+				}
+			case TAnonymous(v):
+				for (hvalue in v) {
+					var obj:DynamicAccess<Dynamic> = value;
+					var o:Dynamic = obj.get(hvalue.name);
+					if (o == null)
+						return false;
+					if (!isCompatible(o, hvalue.type))
+						return false;
+				}
 				return true;
+
 			default:
-				try {
-					var cls = Type.resolveClass(expected);
-					if (cls != null)
-						return Std.isOfType(value, cls);
-				} catch (e:Dynamic) {}
-
-				if (expected.indexOf("->") >= 0 || StringTools.startsWith(expected, "Function"))
-					return Reflect.isFunction(value);
-
 				return false;
 		}
 	}

@@ -5,6 +5,7 @@ enum abstract Instruction(Int) from Int to Int {
 	var LOAD_CONSTANT;
 	var LOAD_LOCAL;
 	var STORE_LOCAL;
+	var MOVE;
 
 	//Getters
 	var FIELD;
@@ -21,6 +22,7 @@ enum abstract Instruction(Int) from Int to Int {
 	var FALSE;
 	var NULL;
 	var ARRAY;
+	var OBJECT;
 
 	// Variables
 	var VAR_DECLARATION;

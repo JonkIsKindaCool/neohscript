@@ -1,5 +1,6 @@
 package hscript.bytecode;
 
+import hscript.data.Types;
 import hscript.errors.HscriptException;
 import hscript.ast.Span;
 import haxe.Exception;
@@ -61,6 +62,23 @@ class Compiler {
 
 					for (r in regs)
 						registerAllocator.free(r);
+
+					var reg:Int = registerAllocator.allocateRegister();
+					add_instruction(reg);
+					return reg;
+
+				case EObjectDecl(fields):
+					var regs:Array<Int> = [];
+					for (elem in fields)
+						regs.push(compileExpr(elem.value));
+
+					add_header_instruction(OBJECT);
+					add_instruction(fields.length);
+
+					for (i => elem in fields) {
+						add_instruction(getConstant(elem.name));
+						add_instruction(regs[i]);
+					}
 
 					var reg:Int = registerAllocator.allocateRegister();
 					add_instruction(reg);
@@ -130,13 +148,15 @@ class Compiler {
 
 					add_instruction(args.length);
 					for (arg in args) {
-						var argTypeName = arg.type != null && arg.type.name != null ? arg.type.name : "Dynamic";
 						add_instruction(getConstant(arg.name));
-						add_instruction(getConstant(argTypeName));
+						add_instruction(arg.type != null ? 1 : 0);
+						if (ret != null)
+							compileType(arg.type);
 					}
 
-					var retTypeName = (ret != null && ret.name != null) ? ret.name : "Dynamic";
-					add_instruction(getConstant(retTypeName));
+					add_instruction(ret != null ? 1 : 0);
+					if (ret != null)
+						compileType(ret);
 
 					var len_loc:Int = instructions.length;
 					add_instruction(0);
@@ -147,7 +167,10 @@ class Compiler {
 
 					popScope();
 
-					return -1;
+					var reg:Int = registerAllocator.allocateRegister();
+					add_instruction(reg);
+
+					return reg;
 
 				case ENull:
 					var reg:Int = registerAllocator.allocateRegister();
@@ -249,18 +272,16 @@ class Compiler {
 							add_instruction(src);
 							add_instruction(dst);
 						case OpIncrement | OpDecrement:
-							if (!post) {
-								var one:Int = registerAllocator.allocateRegister();
-								add_header_instruction(LOAD_CONSTANT);
-								add_instruction(one);
-								add_instruction(getConstant(1));
+							var one:Int = registerAllocator.allocateRegister();
+							add_header_instruction(LOAD_CONSTANT);
+							add_instruction(one);
+							add_instruction(getConstant(1));
 
+							if (!post) {
 								add_header_instruction(o == OpIncrement ? OP_ADD : OP_SUB);
 								add_instruction(src);
 								add_instruction(one);
 								add_instruction(dst);
-
-								registerAllocator.free(one);
 
 								switch (p.kind) {
 									case EIdent(n):
@@ -271,18 +292,15 @@ class Compiler {
 								}
 							} else {
 								var newVal:Int = registerAllocator.allocateRegister();
-								var one:Int = registerAllocator.allocateRegister();
 
-								add_header_instruction(LOAD_CONSTANT);
-								add_instruction(one);
-								add_instruction(getConstant(1));
+								add_header_instruction(MOVE);
+								add_instruction(src);
+								add_instruction(dst);
 
 								add_header_instruction(o == OpIncrement ? OP_ADD : OP_SUB);
 								add_instruction(src);
 								add_instruction(one);
 								add_instruction(newVal);
-
-								registerAllocator.free(one);
 
 								switch (p.kind) {
 									case EIdent(n):
@@ -293,19 +311,9 @@ class Compiler {
 								}
 
 								registerAllocator.free(newVal);
-
-								var zero:Int = registerAllocator.allocateRegister();
-								add_header_instruction(LOAD_CONSTANT);
-								add_instruction(zero);
-								add_instruction(getConstant(0));
-
-								add_header_instruction(OP_ADD);
-								add_instruction(src);
-								add_instruction(zero);
-								add_instruction(dst);
-
-								registerAllocator.free(zero);
 							}
+
+							registerAllocator.free(one);
 						case _: throw 'Unsupported unary operator: $o';
 					}
 					registerAllocator.free(src);
@@ -326,7 +334,9 @@ class Compiler {
 					add_header_instruction(VAR_DECLARATION);
 					add_instruction(getConstant(n));
 					add_instruction(f ? 1 : 0);
-					add_instruction(getConstant(t?.name ?? "Dynamic"));
+					add_instruction(t != null ? 1 : 0);
+					if (t != null)
+						compileType(t);
 					add_instruction(eReg);
 
 					if (eReg != -1)
@@ -420,6 +430,26 @@ class Compiler {
 
 	private inline function add_instruction(i:Instruction) {
 		instructions.push(i);
+	}
+
+	private inline function compileType(t:Types) {
+		switch (t) {
+			case TSimple(name, generics):
+				add_instruction(0);
+				add_instruction(getConstant(name));
+				add_instruction(generics.length);
+				for (t in generics)
+					compileType(t);
+			case TAnonymous(v):
+				add_instruction(1);
+				add_instruction(v.length);
+				for (value in v) {
+					add_instruction(getConstant(value.name));
+					compileType(value.type);
+				}
+			case TFunction(variables, ret):
+				add_instruction(0);
+		}
 	}
 
 	private function getConstant(v:Dynamic):Int {
