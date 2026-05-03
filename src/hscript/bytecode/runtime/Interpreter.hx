@@ -1,5 +1,6 @@
 package hscript.bytecode.runtime;
 
+import haxe.DynamicAccess;
 import hscript.errors.HscriptException;
 import haxe.Exception;
 import hscript.ast.Span;
@@ -39,6 +40,28 @@ class Interpreter {
 			return switch (b) {
 				case GET_CONSTANT:
 					return getConstant();
+				case GET_VARIABLE:
+					null;
+				case TRUE:
+					true;
+				case FALSE:
+					false;
+				case NULL:
+					null;
+				case ARRAY:
+					var len:Int = getInstruction();
+					var arr:Array<Dynamic> = [];
+					for (_ in 0...len)
+						arr.push(executeByte(getInstruction()));
+					return arr;
+				case OBJECT:
+					var len:Int = getInstruction();
+					var obj:DynamicAccess<Dynamic> = {};
+					for (_ in 0...len) {
+						obj.set(getConstant(), executeByte(getInstruction()));
+					}
+
+					return obj;
 				case OP_ADD:
 					var l:Dynamic = executeByte(getInstruction());
 					var r:Dynamic = executeByte(getInstruction());
@@ -65,7 +88,8 @@ class Interpreter {
 
 					l % r;
 				case OP_NEG:
-					null;
+					var v:Dynamic = executeByte(getInstruction());
+					- v;
 				case OP_EQUAL:
 					var l:Dynamic = executeByte(getInstruction());
 					var r:Dynamic = executeByte(getInstruction());
@@ -101,7 +125,8 @@ class Interpreter {
 				case OP_BOOL_OR: var l:Dynamic = executeByte(getInstruction()); var r:Dynamic = executeByte(getInstruction()); l || r;
 
 				case OP_NOT:
-					null;
+					var v:Dynamic = executeByte(getInstruction());
+					!v;
 				case OP_AND:
 					var l:Dynamic = executeByte(getInstruction());
 					var r:Dynamic = executeByte(getInstruction());

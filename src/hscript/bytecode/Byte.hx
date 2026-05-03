@@ -2,6 +2,14 @@ package hscript.bytecode;
 
 enum abstract Byte(UInt) from UInt to UInt {
 	var GET_CONSTANT;
+	var GET_VARIABLE;
+
+	var TRUE;
+	var FALSE;
+	var NULL;
+
+	var ARRAY;
+	var OBJECT;
 
 	// Arithmetic  (lhs rhs dst)
 	var OP_ADD;

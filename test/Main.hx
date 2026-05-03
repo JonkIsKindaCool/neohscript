@@ -1,3 +1,4 @@
+import hscript.bytecode.Program;
 import hscript.bytecode.runtime.Interpreter;
 import hscript.bytecode.compiler.Compiler;
 import hscript.Interp;
@@ -26,8 +27,8 @@ function main() {
 
 	var t2:Float = Sys.cpuTime() * 1000;
 	Sys.println('NEOHSCRIPT Execution: ${t2 - t1}ms');
-	Sys.println('NEOHSCRIPT Restul: $result');
-
+	Sys.println('NEOHSCRIPT Result: $result');
+	
 	var ast = new hscript.Parser(name).parseString(src);
 	var i = new Interp(name);
 
@@ -39,5 +40,5 @@ function main() {
 	t2 = Sys.cpuTime() * 1000;
 
 	Sys.println('Rewrite Execution: ${t2 - t1}ms');
-	Sys.println('Rewrite Restul: $result');
+	Sys.println('Rewrite Result: $result');
 }

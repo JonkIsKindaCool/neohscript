@@ -22,7 +22,6 @@ class Compiler {
 		this.file = file;
 
 		compileExpression(e);
-		trace(e);
 
 		return {
 			bytes: bytes,
@@ -48,8 +47,12 @@ class Compiler {
 					addByte(GET_CONSTANT);
 					addByte(getConstant(s));
 				case EIdent(i):
+					addByte(GET_VARIABLE);
+					addByte(getConstant(i));
 				case EBool(b):
+					addByte(b ? TRUE : FALSE);
 				case ENull:
+					addByte(NULL);
 				case EBinop(o, l, r):
 					switch (o) {
 						case OpAdd: addByte(OP_ADD);
@@ -74,14 +77,43 @@ class Compiler {
 						case OpInterval: addByte(OP_INTERVAL);
 						case _: throw 'Unsupported binary operator: $o';
 					}
-                    compileExpression(l);
-                    compileExpression(r);
-				case EUnop(o, p, post):
+					compileExpression(l);
+					compileExpression(r);
+				case EUnop(o, e, post):
+					switch (o) {
+						case OpNeg:
+							switch (e.kind) {
+								case EInt(i):
+									addByte(GET_CONSTANT);
+									addByte(getConstant(-i));
+								case EFloat(f):
+									addByte(GET_CONSTANT);
+									addByte(getConstant(-f));
+								// caso general: emite opcode
+								case _:
+									addByte(OP_NEG);
+									compileExpression(e);
+							}
+						case OpNot:
+							addByte(OP_NOT);
+							compileExpression(e);
+						case _: throw 'Unsupported unary operator: $o';
+					}
 				case ECall(p, args):
 				case EField(p, f):
 				case EArray(e, index):
 				case EArrayDecl(values):
+					addByte(ARRAY);
+					addByte(values.length);
+					for (value in values)
+						compileExpression(value);
 				case EObjectDecl(fields):
+					addByte(OBJECT);
+					addByte(fields.length);
+					for (field in fields) {
+						addByte(getConstant(field.name));
+						compileExpression(field.value);
+					}
 				case EIf(cond, then, elseExpr):
 				case ESwitch(subject, cases, defaultExpr):
 				case ENew(t, params):
