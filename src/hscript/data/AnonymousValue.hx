@@ -1,7 +1,7 @@
 package hscript.data;
 
-@:structInit
-class AnonymousValue {
-    public var name:String;
-    public var type:Types;
-}
+typedef AnonymousValue = {
+	name:String,
+	type:Types,
+	?optional:Bool
+};

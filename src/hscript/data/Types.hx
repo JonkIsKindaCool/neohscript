@@ -1,9 +1,13 @@
 package hscript.data;
 
-import hscript.data.AnonymousValue;
-
 enum Types {
-    TSimple(name:String, ?generics:Array<Types>);
-    TAnonymous(v:Array<AnonymousValue>);
-    TFunction(variables:Array<Types>, ret:Types);
+	TSimple(name:String, ?generics:Array<Types>);
+
+	TAnonymous(fields:Array<AnonymousValue>);
+
+	TFunction(args:Array<Types>, ret:Types);
+
+	TOptional(inner:Types);
+
+	TDynamic(?constraint:Types);
 }

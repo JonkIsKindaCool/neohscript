@@ -1,15 +1,14 @@
 package hscript;
 
+import hscript.bytecode.runtime.Interpreter;
+import hscript.bytecode.compiler.Compiler;
 import haxe.Log;
 import haxe.PosInfos;
 import hscript.ast.Span;
 import haxe.extern.EitherType;
 import hscript.bytecode.Program;
-import hscript.bytecode.Instruction;
 import hscript.lexer.Lexer;
 import hscript.ast.expressions.Expression;
-import hscript.vm.VM;
-import hscript.bytecode.Compiler;
 import hscript.ast.Parser;
 
 @:access(hscript.bytecode.Compiler)
@@ -49,9 +48,9 @@ class NeoHscript {
 
 	public static var cacheVMS:Bool = true;
 
-	private static var _cachedVMS:Map<String, VM> = new Map();
+	private static var _cachedVMS:Map<String, Interpreter> = new Map();
 
-	public static function _resolveScript(path:String):VM {
+	private static function _resolveScript(path:String):Interpreter {
 		if (cacheVMS) {
 			if (_cachedVMS.exists(path))
 				return _cachedVMS.get(path);
@@ -67,7 +66,7 @@ class NeoHscript {
 		return null;
 	}
 
-	public static function _resolveModule(path:String):Expression {
+	private static function _resolveModule(path:String):Expression {
 		return null;
 	}
 
@@ -75,7 +74,7 @@ class NeoHscript {
 
 	private var parser:Parser;
 	private var compiler:Compiler;
-	private var vm:VM;
+	private var interp:Interpreter;
 
 	private var _stackedVariables:Map<String, Dynamic>;
 
@@ -83,15 +82,14 @@ class NeoHscript {
 		_stackedVariables = new Map();
 		parser = new Parser();
 		compiler = new Compiler();
-		vm = new VM();
+		interp = new Interpreter();
 	}
 
 	public function setGlobal(name:String, v:Dynamic) {
-		vm.define(name, v);
 	}
 
 	public function getGlobal(name:String):Dynamic {
-		return vm.get(name);
+		return null;
 	}
 
 	public function execute(script:String, ?file:String):Dynamic {
@@ -100,6 +98,6 @@ class NeoHscript {
 		var ast:Expression = parser.parse(Lexer.tokenify(content), file);
 		var bytecode:Program = compiler.compile(ast, file);
 
-		return vm.execute(bytecode);
+		return null;
 	}
 }

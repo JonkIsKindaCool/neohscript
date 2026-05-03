@@ -1,7 +1,6 @@
 package hscript.scopes;
 
 import hscript.utils.TypeUtils;
-import hscript.vm.VM;
 import hscript.data.Types;
 import haxe.Rest;
 import haxe.ds.StringMap;
@@ -10,72 +9,63 @@ class Scope {
 	public var parent:Scope;
 	public var variables:StringMap<VariableSlot>;
 
-	public function new(?scope:Scope) {
-		this.parent = scope;
-
+	public function new(?parent:Scope) {
+		this.parent = parent;
 		variables = new StringMap();
 	}
 
-	public function define(name:String, value:Dynamic, ?type:Types, ?const:Bool = false) {
-		if (!VM.isCompatible(value, type)) {
-			throw '${TypeUtils.getHaxeTypeName(Type.typeof(value), value)} should be ${TypeUtils.getHScriptType(type)}';
+	public function define(name:String, value:Dynamic, ?type:Types, ?isConst:Bool = false) {
+		variables.set(name, {value: value, type: type, isConst: isConst});
+	}
+	
+	public function set(name:String, value:Dynamic):Dynamic {
+		if (variables.exists(name)) {
+			var slot = variables.get(name);
+
+			if (slot.isConst)
+				throw 'Cannot reassign final variable "$name"';
+
+			slot.value = value;
+			return value;
 		}
 
-		variables.set(name, {
-			value: value,
-			type: type,
-			const: const
-		});
-	}
-
-	public function set(name:String, value:Dynamic):Dynamic {
-		if (parent != null && parent.exists(name))
+		if (parent != null)
 			return parent.set(name, value);
 
-		if (!variables.exists(name))
-			throw 'Variable $name doesnt exists';
-
-		var v:VariableSlot = variables.get(name);
-
-		if (v.const)
-			throw 'Cannot modify the value of constant $name';
-
-		if (!VM.isCompatible(value, v.type)) {
-			throw '${TypeUtils.getHaxeTypeName(Type.typeof(value), value)} should be ${TypeUtils.getHScriptType(v.type)}';
-		}
-
-		return v.value = value;
+		throw 'Variable "$name" is not defined';
 	}
 
 	public function get(name:String):Dynamic {
-		if (parent != null && parent.exists(name))
+		if (variables.exists(name))
+			return variables.get(name).value;
+
+		if (parent != null)
 			return parent.get(name);
 
-		if (!variables.exists(name))
-			throw 'Variable $name doesnt exists';
-
-		return variables.get(name).value;
+		throw 'Variable "$name" is not defined';
 	}
 
 	public function exists(name:String):Bool {
-		if (parent != null && parent.exists(name))
-			return true;
+		return variables.exists(name) || (parent != null && parent.exists(name));
+	}
 
+	public function existsLocally(name:String):Bool {
 		return variables.exists(name);
+	}
+
+	public function getType(name:String):Null<Types> {
+		if (variables.exists(name))
+			return variables.get(name).type;
+		if (parent != null)
+			return parent.getType(name);
+		return null;
 	}
 
 	public function callFunction(name:String, args:Rest<Dynamic>):Dynamic {
 		var f:Dynamic = get(name);
-
-		if (Reflect.isFunction(f)) {
-			if (args.length <= 0)
-				return f();
-			else {
-				return Reflect.callMethod(null, f, args);
-			}
-		}
-
-		throw 'Cannot call a non-function';
+		if (!Reflect.isFunction(f))
+			throw '"$name" is not callable';
+		return Reflect.callMethod(null, f, args.toArray());
 	}
 }
 
@@ -83,5 +73,5 @@ class Scope {
 private class VariableSlot {
 	public var value:Dynamic;
 	public var type:Types;
-	public var const:Bool;
+	public var isConst:Bool;
 }

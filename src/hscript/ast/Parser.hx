@@ -495,8 +495,10 @@ class Parser {
 	}
 
 	function checkSemicolon() {
-		if (!NeoHscript.STRICT_SEMICOLONS)
+		if (!NeoHscript.STRICT_SEMICOLONS) {
+			maybe(TSemicolon);
 			return;
+		}
 
 		if (!maybe(TSemicolon))
 			throw "Missing ;";

@@ -1,41 +1,7 @@
 package hscript.bytecode;
 
-enum abstract Instruction(Int) from Int to Int {
-	// Memory
-	var LOAD_CONSTANT;
-	var LOAD_LOCAL;
-	var STORE_LOCAL;
-	var MOVE;
-
-	//Getters
-	var FIELD;
-
-	// Calls
-	var CALL;
-	var FUNCTION;
-	var ANONYMOUS_FUNCTION;
-	var TRACE;
-	var INDEX;
-
-	// Literals
-	var TRUE;
-	var FALSE;
-	var NULL;
-	var ARRAY;
-	var OBJECT;
-
-	// Variables
-	var VAR_DECLARATION;
-
-	// Control flow
-	var RETURN;
-	var JUMP;
-	var JUMP_IF_FALSE;
-	var JUMP_IF_TRUE;
-	var JUMP_BACK;
-
-	// Exceptions
-	var THROW;
+enum abstract Byte(UInt) from UInt to UInt {
+	var GET_CONSTANT;
 
 	// Arithmetic  (lhs rhs dst)
 	var OP_ADD;
