@@ -15,15 +15,26 @@ class Scope {
 	}
 
 	public function define(name:String, value:Dynamic, ?type:Types, ?isConst:Bool = false) {
+		if (!TypeUtils.isCompatible(value, type)) {
+			var got = TypeUtils.getHaxeTypeName(Type.typeof(value), value);
+			var exp = TypeUtils.typeToString(type);
+			throw 'Type error: cannot assign $got to "$name" of type $exp';
+		}
 		variables.set(name, {value: value, type: type, isConst: isConst});
 	}
-	
+
 	public function set(name:String, value:Dynamic):Dynamic {
 		if (variables.exists(name)) {
 			var slot = variables.get(name);
 
 			if (slot.isConst)
 				throw 'Cannot reassign final variable "$name"';
+
+			if (!TypeUtils.isCompatible(value, slot.type)) {
+				var got = TypeUtils.getHaxeTypeName(Type.typeof(value), value);
+				var exp = TypeUtils.typeToString(slot.type);
+				throw 'Type error: cannot assign $got to "$name" of type $exp';
+			}
 
 			slot.value = value;
 			return value;

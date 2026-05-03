@@ -22,6 +22,7 @@ class Compiler {
 		this.file = file;
 
 		compileExpression(e);
+		trace(e);
 
 		return {
 			bytes: bytes,
