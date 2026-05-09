@@ -1,31 +1,35 @@
-package hscript.scopes.contexts;
+package hscript.contexts;
 
-import hscript.data.Types;
 import haxe.Rest;
 
 class DefaultContext implements Context {
-	public var globals:Scope;
+	public var variables:Map<String, Dynamic>;
 
 	public function new() {
-		globals = new Scope();
-
+		variables = new Map();
+		
 		for (name => variable in NeoHscript.DEFAULT_IMPORTS)
 			defineVariable(name, variable);
 	}
 
 	public function getVariable(name:String):Dynamic {
-		return globals.get(name);
+		return variables.get(name);
 	}
 
 	public function defineVariable(name:String, value:Dynamic, ?type:Types, ?const:Bool) {
-		globals.define(name, value, type, const);
+		variables.set(name, value);
 	}
 
 	public function setVariable(name:String, value:Dynamic):Dynamic {
-		return globals.set(name, value);
+		variables.set(name, value);
+		return value;
 	}
 
 	public function callFunction(name:String, args:Rest<Dynamic>):Dynamic {
-		return globals.callFunction(name, args);
+		var f = variables.get(name);
+		if (args.length > 0){
+			return Reflect.callMethod(null, f, args);
+		}
+		return f();
 	}
 }

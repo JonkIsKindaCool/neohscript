@@ -11,6 +11,30 @@ enum abstract Byte(UInt) from UInt to UInt {
 	var ARRAY;
 	var OBJECT;
 
+	var TRACE;
+	var CALL;
+	var CALL_FIELD;
+	var FIELD;
+	var INDEX;
+
+	var RETURN;
+	var BREAK;
+	var CONTINUE;
+
+	var ANONYMOUS_FUNCTION;
+	var FUNCTION;
+	var DEFINE_VARIABLE;
+	var SET_VARIABLE;
+	var SET_FIELD;
+
+	var PUSH_SCOPE;
+	var POP_SCOPE;
+
+	var JUMP;
+	var JUMP_IF_FALSE;
+	var JUMP_IF_TRUE;
+	var JUMP_BACK;
+
 	// Arithmetic  (lhs rhs dst)
 	var OP_ADD;
 	var OP_SUB;
